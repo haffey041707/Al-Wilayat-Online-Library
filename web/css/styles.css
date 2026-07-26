@@ -690,10 +690,12 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 @media (prefers-reduced-motion: reduce) { .prog-ring .spin-ring { animation: none; } }
 
 /* Jarvis-style HUD below the progress rings */
-.jarvis { width: 88px; height: 88px; display: block; margin: 8px auto 2px; filter: drop-shadow(0 0 5px rgba(42,111,214,.45)); }
-.jarvis .j-spin { transform-box: fill-box; transform-origin: center; animation: spinRing 6s linear infinite; }
-.jarvis .cw { animation: spinRing 6s linear infinite; }
-.jarvis .ccw { animation: spinRing 8s linear infinite reverse; }
-.jarvis .fast { animation-duration: 3.6s; }
-.jarvis .slow { animation-duration: 11s; }
+.jarvis { width: 62px; height: 62px; flex-shrink: 0; align-self: center; filter: drop-shadow(0 0 5px rgba(42,111,214,.45)); }
+/* spins up and settles once when the home opens, then rests */
+.jarvis .j-spin { transform-box: fill-box; transform-origin: center; animation: jarvisIntro 3.2s ease-out 1 forwards; }
+.jarvis .cw   { --turn: 540deg; }
+.jarvis .ccw  { --turn: -720deg; }
+.jarvis .fast { --turn: 1080deg; }
+.jarvis .slow { --turn: 360deg; }
+@keyframes jarvisIntro { from { transform: rotate(0); } to { transform: rotate(var(--turn, 540deg)); } }
 @media (prefers-reduced-motion: reduce) { .jarvis .j-spin { animation: none; } }
