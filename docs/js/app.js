@@ -475,6 +475,10 @@ function progressRings(st) {
     return `<circle class="dust" cx="${d[0]}" cy="${d[1]}" r="${r}" fill="${dustC[i % 3]}" ` +
       `style="--dx:${dx}px;animation-duration:${dur}s;animation-delay:${del}s"/>`;
   }).join("");
+  // two small dark-blue spinning accent rings at the bottom sides
+  const spinner = (cx, cy, cls) =>
+    `<circle class="spin-ring ${cls}" cx="${cx}" cy="${cy}" r="12" fill="none" stroke="#1e5bb8" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="34 42"/>`;
+  const spinners = spinner(30, 172, "") + spinner(170, 172, "rev");
   const row = (color, label, a, b) =>
     `<div><span class="dot" style="background:${color}"></span>${label}<b>${a}/${b}</b></div>`;
   return `
@@ -490,6 +494,7 @@ function progressRings(st) {
             ${dust}
             ${ring(88, pR, "gP")}${ring(65, vR, "gV")}${ring(44, dR, "gD")}
             ${tip(88, pR)}${tip(65, vR)}${tip(44, dR)}
+            ${spinners}
           </svg>
           <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
         </div>

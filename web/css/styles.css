@@ -682,3 +682,9 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
   100% { opacity: 0;   transform: translate(var(--dx, -4px), -18px) scale(1.2); }
 }
 @media (prefers-reduced-motion: reduce) { .prog-ring .dust { animation: none; opacity: .5; } }
+
+/* Small dark-blue spinning accent rings */
+.prog-ring .spin-ring { transform-box: fill-box; transform-origin: center; animation: spinRing 2.4s linear infinite; }
+.prog-ring .spin-ring.rev { animation-direction: reverse; animation-duration: 3s; }
+@keyframes spinRing { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .prog-ring .spin-ring { animation: none; } }
