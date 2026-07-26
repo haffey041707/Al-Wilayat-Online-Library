@@ -690,7 +690,7 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 @media (prefers-reduced-motion: reduce) { .prog-ring .spin-ring { animation: none; } }
 
 /* Jarvis-style HUD below the progress rings */
-.jarvis { width: 62px; height: 62px; flex-shrink: 0; align-self: center; filter: drop-shadow(0 0 5px rgba(42,111,214,.45)); }
+.jarvis { width: 224px; height: 224px; flex-shrink: 0; align-self: center; filter: drop-shadow(0 0 5px rgba(42,111,214,.45)); }
 /* spins up and settles once when the home opens, then rests */
 .jarvis .j-spin { transform-box: fill-box; transform-origin: center; animation: jarvisIntro 3.2s ease-out 1 forwards; }
 .jarvis .cw   { --turn: 540deg; }
