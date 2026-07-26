@@ -463,8 +463,8 @@ function progressRings(st) {
     const x = 100 + r * Math.cos(ang), y = 100 + r * Math.sin(ang);
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.6" fill="#eef4fc" filter="url(#silver)"/>`;
   };
-  // real drifting, shining dust in the three colours (particles float up & fade)
-  const dustC = [C.prayers, C.verses, C.dhikr];
+  // real drifting, shining SILVER dust (particles float up & fade)
+  const dustC = ["#e8eef7", "#c3cfe0", "#d6deec"]; // silver shades
   const dpos = [[26, 44], [172, 52], [184, 150], [30, 158], [150, 26], [52, 182], [180, 104], [22, 108],
     [100, 16], [100, 188], [66, 30], [140, 176], [42, 88], [164, 122], [82, 168], [122, 60], [36, 130], [168, 74]];
   const dust = dpos.map((d, i) => {
