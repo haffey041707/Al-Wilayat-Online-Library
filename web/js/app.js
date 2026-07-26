@@ -439,12 +439,6 @@ const OBLIGATORY = () => PRAYERS.filter((p) => p.key !== "sunrise");
 function renderHome(v) {
   const next = nextPrayer();
   const st = Stats.get();
-  const cards = MODULES.map((m, i) => `
-    <div class="module-card" style="animation-delay:${i * 55}ms" onclick="go('${routeFor(m.id)}')">
-      <span class="glow" style="--accent:${m.accent}"></span>
-      <h3>${t(m.titleKey)}</h3>
-      <p>${t(m.descKey)}</p>
-    </div>`).join("");
 
   v.innerHTML = `
     <div class="hero glass-hi">
@@ -460,9 +454,7 @@ function renderHome(v) {
     </div>
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
-      <button class="btn" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button></div>`}
-    <div class="page-head"><h1 style="font-size:22px">${t("explore")}</h1><p>${t("explore_sub")}</p></div>
-    <div class="grid modules">${cards}</div>`;
+      <button class="btn" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button></div>`}`;
 }
 const routeFor = (id) => (id === "ahlulbayt" ? "ahlulbayt" : id);
 const ARABIC_SCRIPT_LANGS = ["ar", "ur", "fa", "prs", "ks"];
