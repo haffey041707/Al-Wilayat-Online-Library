@@ -461,7 +461,7 @@ function progressRings(st) {
       <div class="prog-wrap">
         <div class="prog-ring" role="img" aria-label="${overall}% ${localizedText("today")}">
           <svg viewBox="0 0 200 200">
-            ${ring(87, pR, C.prayers)}${ring(64, vR, C.verses)}${ring(41, dR, C.dhikr)}
+            ${ring(88, pR, C.prayers)}${ring(65, vR, C.verses)}${ring(44, dR, C.dhikr)}
           </svg>
           <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
         </div>
