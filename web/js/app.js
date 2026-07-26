@@ -475,15 +475,43 @@ function progressRings(st) {
     return `<circle class="dust" cx="${d[0]}" cy="${d[1]}" r="${r}" fill="${dustC[i % 3]}" ` +
       `style="--dx:${dx}px;animation-duration:${dur}s;animation-delay:${del}s"/>`;
   }).join("");
-  // Jarvis-style HUD — dark-blue + silver concentric spinning rings (sits below the graph)
+  // Jarvis-style HUD — tick bezel, orbiting nodes, gradient glowing arcs, pulsing core
+  let jTicks = "", jDots = "";
+  for (let i = 0; i < 60; i++) {
+    const a = i * 6 * Math.PI / 180, lng = i % 5 === 0;
+    const r1 = lng ? 42.5 : 44.5, r2 = 47.5;
+    jTicks += `<line x1="${(50 + r1 * Math.cos(a)).toFixed(2)}" y1="${(50 + r1 * Math.sin(a)).toFixed(2)}" x2="${(50 + r2 * Math.cos(a)).toFixed(2)}" y2="${(50 + r2 * Math.sin(a)).toFixed(2)}" stroke="#8fa6c8" stroke-width="${lng ? 1 : 0.5}" opacity="${lng ? 0.7 : 0.3}"/>`;
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = i * 30 * Math.PI / 180;
+    jDots += `<circle cx="${(50 + 37 * Math.cos(a)).toFixed(2)}" cy="${(50 + 37 * Math.sin(a)).toFixed(2)}" r="1.1" fill="#cfdcf0" opacity=".55"/>`;
+  }
   const jarvis = `
     <svg class="jarvis" viewBox="0 0 100 100" aria-hidden="true">
-      <circle cx="50" cy="50" r="46" fill="none" stroke="#c3cfe0" stroke-width="1" stroke-dasharray="1 5" opacity=".45"/>
-      <circle class="j-spin cw slow" cx="50" cy="50" r="40" fill="none" stroke="#2a6fd6" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="62 190"/>
-      <circle class="j-spin ccw" cx="50" cy="50" r="31" fill="none" stroke="#dce4f0" stroke-width="2" stroke-dasharray="7 12"/>
-      <circle class="j-spin cw fast" cx="50" cy="50" r="22" fill="none" stroke="#1e5bb8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="34 70"/>
-      <circle cx="50" cy="50" r="8" fill="none" stroke="#2a6fd6" stroke-width="1.3" opacity=".7"/>
-      <circle cx="50" cy="50" r="3.6" fill="#e8eef7"/>
+      <defs>
+        <linearGradient id="jg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#8fdcff"/><stop offset=".5" stop-color="#2a6fd6"/><stop offset="1" stop-color="#163a80"/>
+        </linearGradient>
+        <filter id="jglow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#57b6ff" flood-opacity=".9"/></filter>
+      </defs>
+      <circle cx="50" cy="50" r="47.5" fill="none" stroke="#3a4f74" stroke-width=".6" opacity=".5"/>
+      ${jTicks}
+      <g class="j-spin ccw vslow">${jDots}</g>
+      <g class="j-spin cw slow">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="url(#jg)" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="72 179" filter="url(#jglow)"/>
+        <circle cx="90" cy="50" r="2.4" fill="#cdeeff" filter="url(#jglow)"/>
+      </g>
+      <g class="j-spin ccw">
+        <circle cx="50" cy="50" r="31" fill="none" stroke="#dce4f0" stroke-width="1.6" stroke-dasharray="6 10" opacity=".85"/>
+        <circle cx="50" cy="81" r="1.8" fill="#eaf3ff" filter="url(#jglow)"/>
+      </g>
+      <g class="j-spin cw fast">
+        <circle cx="50" cy="50" r="22" fill="none" stroke="url(#jg)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="40 98" filter="url(#jglow)"/>
+        <circle cx="72" cy="50" r="1.8" fill="#cdeeff" filter="url(#jglow)"/>
+      </g>
+      <circle class="j-pulse" cx="50" cy="50" r="9" fill="none" stroke="#7fd8ff" stroke-width="1"/>
+      <circle cx="50" cy="50" r="9" fill="none" stroke="#3a6bb5" stroke-width="1" opacity=".5"/>
+      <circle class="j-core" cx="50" cy="50" r="5" fill="url(#jg)" filter="url(#jglow)"/>
     </svg>`;
   const row = (color, label, a, b) =>
     `<div><span class="dot" style="background:${color}"></span>${label}<b>${a}/${b}</b></div>`;

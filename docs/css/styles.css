@@ -698,3 +698,11 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 .jarvis .fast { animation-duration: 3.6s; }
 .jarvis .slow { animation-duration: 11s; }
 @media (prefers-reduced-motion: reduce) { .jarvis .j-spin { animation: none; } }
+
+/* Jarvis HUD extras: slow node ring, pulsing core */
+.jarvis .vslow { animation-duration: 22s; }
+.jarvis .j-core { transform-box: fill-box; transform-origin: center; animation: jcore 2.6s ease-in-out infinite; }
+.jarvis .j-pulse { transform-box: fill-box; transform-origin: center; animation: jpulse 2.6s ease-out infinite; }
+@keyframes jcore { 0%,100% { opacity: .8; } 50% { opacity: 1; } }
+@keyframes jpulse { 0% { transform: scale(.55); opacity: .8; } 100% { transform: scale(2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .jarvis .j-core, .jarvis .j-pulse { animation: none; } }
