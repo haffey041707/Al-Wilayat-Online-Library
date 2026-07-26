@@ -445,10 +445,11 @@ function progressRings(st) {
   const vR = Math.min(1, (st.versesToday || 0) / GOALS.verses);
   const dR = Math.min(1, (st.dhikrToday || 0) / GOALS.dhikr);
   const overall = Math.round(((pR + vR + dR) / 3) * 100);
+  const C = { prayers: "#cc3b3b", verses: "#2f9e57", dhikr: "#a9743e" }; // dark red / dark green / brown
   const ring = (r, val, color) => {
     const c = 2 * Math.PI * r;
-    return `<circle cx="100" cy="100" r="${r}" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="13"/>` +
-      `<circle cx="100" cy="100" r="${r}" fill="none" stroke="${color}" stroke-width="13" stroke-linecap="round" ` +
+    return `<circle cx="100" cy="100" r="${r}" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="15"/>` +
+      `<circle cx="100" cy="100" r="${r}" fill="none" stroke="${color}" stroke-width="15" stroke-linecap="round" ` +
       `stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - val)).toFixed(1)}" ` +
       `transform="rotate(-90 100 100)" style="transition:stroke-dashoffset 1.1s var(--ease)"/>`;
   };
@@ -460,14 +461,14 @@ function progressRings(st) {
       <div class="prog-wrap">
         <div class="prog-ring" role="img" aria-label="${overall}% ${localizedText("today")}">
           <svg viewBox="0 0 200 200">
-            ${ring(82, pR, "#E8B84B")}${ring(62, vR, "#2FD3A5")}${ring(44, dR, "#58A6FF")}
+            ${ring(87, pR, C.prayers)}${ring(64, vR, C.verses)}${ring(41, dR, C.dhikr)}
           </svg>
           <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
         </div>
         <div class="prog-legend">
-          ${row("#E8B84B", localizedText("Prayers"), prayed, pt)}
-          ${row("#2FD3A5", localizedText("Verses"), st.versesToday || 0, GOALS.verses)}
-          ${row("#58A6FF", localizedText("Dhikr"), st.dhikrToday || 0, GOALS.dhikr)}
+          ${row(C.prayers, localizedText("Prayers"), prayed, pt)}
+          ${row(C.verses, localizedText("Verses"), st.versesToday || 0, GOALS.verses)}
+          ${row(C.dhikr, localizedText("Dhikr"), st.dhikrToday || 0, GOALS.dhikr)}
         </div>
       </div>
     </div>`;
