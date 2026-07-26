@@ -401,12 +401,12 @@ const Stats = {
   // Count a single verse as read (once per ayah per day) — for live per-user "Read today".
   addVerseRead(key) {
     const s = this.get();
-    s.readAyat = s.readAyat || [];
-    if (!s.readAyat.includes(key)) {
-      s.readAyat.push(key);
-      s.versesToday = (s.versesToday || 0) + 1;
-      this.save(s);
-    }
+    s.readAyat = s.readAyat || [];       // today (resets daily)
+    s.readAyatAll = s.readAyatAll || []; // all-time unique ayahs (whole-Qur'an progress)
+    let changed = false;
+    if (!s.readAyat.includes(key)) { s.readAyat.push(key); s.versesToday = (s.versesToday || 0) + 1; changed = true; }
+    if (!s.readAyatAll.includes(key)) { s.readAyatAll.push(key); changed = true; }
+    if (changed) this.save(s);
   },
   // ---- Per-device prayer tracking (live build) ----
   getPrayers(date) { const s = this.load(); return (s.prayers && s.prayers[date || this._today()]) || []; },
@@ -435,14 +435,16 @@ const Stats = {
 // The 5 obligatory daily prayers (Sunrise is not a prayer).
 const OBLIGATORY = () => PRAYERS.filter((p) => p.key !== "sunrise");
 
-// Daily goals for the progress rings.
-const GOALS = { verses: 20, dhikr: 100 };
+// Ring goals: Verses = the whole Qur'an (6236 ayahs, cumulative); prayers 5/day, dhikr 100/day.
+const QURAN_TOTAL = 6236;
+const GOALS = { verses: QURAN_TOTAL, dhikr: 100 };
 // Concentric progress rings (prayers / verses / dhikr) — per-user, from localStorage.
 function progressRings(st) {
   const pt = OBLIGATORY().length;
   const prayed = Stats.getPrayers().length;
+  const vCount = (st.readAyatAll || []).length;   // cumulative unique ayahs read (whole Qur'an)
   const pR = Math.min(1, prayed / pt);
-  const vR = Math.min(1, (st.versesToday || 0) / GOALS.verses);
+  const vR = Math.min(1, vCount / GOALS.verses);
   const dR = Math.min(1, (st.dhikrToday || 0) / GOALS.dhikr);
   const overall = Math.round(((pR + vR + dR) / 3) * 100);
   const C = { prayers: "#cc3b3b", verses: "#2f9e57", dhikr: "#a9743e" }; // solid (legend dots)
@@ -534,7 +536,7 @@ function progressRings(st) {
         </div>
         <div class="prog-legend">
           ${row(C.prayers, localizedText("Prayers"), prayed, pt)}
-          ${row(C.verses, localizedText("Verses"), st.versesToday || 0, GOALS.verses)}
+          ${row(C.verses, localizedText("Verses"), vCount, GOALS.verses)}
           ${row(C.dhikr, localizedText("Dhikr"), st.dhikrToday || 0, GOALS.dhikr)}
         </div>
       </div>
@@ -737,8 +739,7 @@ async function openSurah(n) {
   const body = el("#quranBody");
   body.innerHTML = `<div class="card">${t("loading")}</div>`;
   try {
-    const d = await api(`/quran/surah/${n}`);
-    if (!STATIC) Stats.addSurahRead(n, (d.verses || []).length);   // Mac: whole surah on open
+    const d = await api(`/quran/surah/${n}`);   // verses are counted per-ayah as they scroll into view
     const allAudio = d.verses.filter((v) => v.audio).map((v) => v.audio);
     body.innerHTML = `
       <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
@@ -753,7 +754,7 @@ async function openSurah(n) {
       ${n !== 1 && n !== 9 ? `<div class="ayah-block" style="text-align:center"><div class="ar">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div></div>` : ""}
       ${d.verses.map((a) => verseBlock(a, n)).join("")}`;
     window._surahAudio = allAudio;
-    if (STATIC) observeVersesRead(body);   // live: count each verse as it's scrolled into view
+    observeVersesRead(body);   // count each verse once as it scrolls into view (Mac + live)
   } catch {
     body.innerHTML = offlineBanner();
   }
