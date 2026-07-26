@@ -475,10 +475,16 @@ function progressRings(st) {
     return `<circle class="dust" cx="${d[0]}" cy="${d[1]}" r="${r}" fill="${dustC[i % 3]}" ` +
       `style="--dx:${dx}px;animation-duration:${dur}s;animation-delay:${del}s"/>`;
   }).join("");
-  // two small dark-blue spinning accent rings at the bottom sides
-  const spinner = (cx, cy, cls) =>
-    `<circle class="spin-ring ${cls}" cx="${cx}" cy="${cy}" r="12" fill="none" stroke="#1e5bb8" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="34 42"/>`;
-  const spinners = spinner(30, 172, "") + spinner(170, 172, "rev");
+  // Jarvis-style HUD — dark-blue + silver concentric spinning rings (sits below the graph)
+  const jarvis = `
+    <svg class="jarvis" viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="46" fill="none" stroke="#c3cfe0" stroke-width="1" stroke-dasharray="1 5" opacity=".45"/>
+      <circle class="j-spin cw slow" cx="50" cy="50" r="40" fill="none" stroke="#2a6fd6" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="62 190"/>
+      <circle class="j-spin ccw" cx="50" cy="50" r="31" fill="none" stroke="#dce4f0" stroke-width="2" stroke-dasharray="7 12"/>
+      <circle class="j-spin cw fast" cx="50" cy="50" r="22" fill="none" stroke="#1e5bb8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="34 70"/>
+      <circle cx="50" cy="50" r="8" fill="none" stroke="#2a6fd6" stroke-width="1.3" opacity=".7"/>
+      <circle cx="50" cy="50" r="3.6" fill="#e8eef7"/>
+    </svg>`;
   const row = (color, label, a, b) =>
     `<div><span class="dot" style="background:${color}"></span>${label}<b>${a}/${b}</b></div>`;
   return `
@@ -494,7 +500,6 @@ function progressRings(st) {
             ${dust}
             ${ring(88, pR, "gP")}${ring(65, vR, "gV")}${ring(42, dR, "gD")}
             ${tip(88, pR)}${tip(65, vR)}${tip(42, dR)}
-            ${spinners}
           </svg>
           <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
         </div>
@@ -504,6 +509,7 @@ function progressRings(st) {
           ${row(C.dhikr, localizedText("Dhikr"), st.dhikrToday || 0, GOALS.dhikr)}
         </div>
       </div>
+      ${jarvis}
     </div>`;
 }
 

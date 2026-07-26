@@ -688,3 +688,12 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 .prog-ring .spin-ring.rev { animation-direction: reverse; animation-duration: 3s; }
 @keyframes spinRing { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .prog-ring .spin-ring { animation: none; } }
+
+/* Jarvis-style HUD below the progress rings */
+.jarvis { width: 88px; height: 88px; display: block; margin: 8px auto 2px; filter: drop-shadow(0 0 5px rgba(42,111,214,.45)); }
+.jarvis .j-spin { transform-box: fill-box; transform-origin: center; animation: spinRing 6s linear infinite; }
+.jarvis .cw { animation: spinRing 6s linear infinite; }
+.jarvis .ccw { animation: spinRing 8s linear infinite reverse; }
+.jarvis .fast { animation-duration: 3.6s; }
+.jarvis .slow { animation-duration: 11s; }
+@media (prefers-reduced-motion: reduce) { .jarvis .j-spin { animation: none; } }
