@@ -492,8 +492,8 @@ function progressRings(st) {
               <filter id="silver" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="2.3" flood-color="#dfe8f5" flood-opacity="0.95"/></filter>
             </defs>
             ${dust}
-            ${ring(88, pR, "gP")}${ring(65, vR, "gV")}${ring(44, dR, "gD")}
-            ${tip(88, pR)}${tip(65, vR)}${tip(44, dR)}
+            ${ring(88, pR, "gP")}${ring(65, vR, "gV")}${ring(42, dR, "gD")}
+            ${tip(88, pR)}${tip(65, vR)}${tip(42, dR)}
             ${spinners}
           </svg>
           <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
