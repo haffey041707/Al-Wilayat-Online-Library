@@ -435,6 +435,44 @@ const Stats = {
 // The 5 obligatory daily prayers (Sunrise is not a prayer).
 const OBLIGATORY = () => PRAYERS.filter((p) => p.key !== "sunrise");
 
+// Daily goals for the progress rings.
+const GOALS = { verses: 20, dhikr: 100 };
+// Concentric progress rings (prayers / verses / dhikr) — per-user, from localStorage.
+function progressRings(st) {
+  const pt = OBLIGATORY().length;
+  const prayed = Stats.getPrayers().length;
+  const pR = Math.min(1, prayed / pt);
+  const vR = Math.min(1, (st.versesToday || 0) / GOALS.verses);
+  const dR = Math.min(1, (st.dhikrToday || 0) / GOALS.dhikr);
+  const overall = Math.round(((pR + vR + dR) / 3) * 100);
+  const ring = (r, val, color) => {
+    const c = 2 * Math.PI * r;
+    return `<circle cx="100" cy="100" r="${r}" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="13"/>` +
+      `<circle cx="100" cy="100" r="${r}" fill="none" stroke="${color}" stroke-width="13" stroke-linecap="round" ` +
+      `stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - val)).toFixed(1)}" ` +
+      `transform="rotate(-90 100 100)" style="transition:stroke-dashoffset 1.1s var(--ease)"/>`;
+  };
+  const row = (color, label, a, b) =>
+    `<div><span class="dot" style="background:${color}"></span>${label}<b>${a}/${b}</b></div>`;
+  return `
+    <div class="card progress-card">
+      <div class="prog-head">📊 ${localizedText("Your progress today")}</div>
+      <div class="prog-wrap">
+        <div class="prog-ring" role="img" aria-label="${overall}% ${localizedText("today")}">
+          <svg viewBox="0 0 200 200">
+            ${ring(82, pR, "#E8B84B")}${ring(62, vR, "#2FD3A5")}${ring(44, dR, "#58A6FF")}
+          </svg>
+          <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
+        </div>
+        <div class="prog-legend">
+          ${row("#E8B84B", localizedText("Prayers"), prayed, pt)}
+          ${row("#2FD3A5", localizedText("Verses"), st.versesToday || 0, GOALS.verses)}
+          ${row("#58A6FF", localizedText("Dhikr"), st.dhikrToday || 0, GOALS.dhikr)}
+        </div>
+      </div>
+    </div>`;
+}
+
 // ---------- HOME ----------
 function renderHome(v) {
   const next = nextPrayer();
@@ -448,10 +486,11 @@ function renderHome(v) {
     </div>
     <div class="stat-row">
       <div class="stat"><div class="big">${next.time}</div><div class="lbl">${t("next_prayer")} · ${langName(next)}</div></div>
-      <div class="stat"><div class="big">${STATIC ? Stats.prayerStreak(OBLIGATORY().length) : (st.streak || 1)} ${t("days")}</div><div class="lbl">${t("streak")}</div></div>
+      <div class="stat"><div class="big">${Stats.prayerStreak(OBLIGATORY().length)} ${t("days")}</div><div class="lbl">${t("streak")}</div></div>
       <div class="stat"><div class="big">${st.versesToday || 0} ${t("verses")}</div><div class="lbl">${t("read_today")}</div></div>
       <div class="stat"><div class="big">${st.dhikrToday || 0} ${t("times")}</div><div class="lbl">${t("dhikr_today")}</div></div>
     </div>
+    ${progressRings(st)}
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
       <button class="btn" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button></div>`}`;
@@ -1051,11 +1090,11 @@ function renderPrayer(v) {
   const loc = State.prayer ? t(State.prayer.label === "yours" ? "loc_yours" : "loc_india") : t("loc_sample");
   const tz = (State.prayer && State.prayer.tz) || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const dateStr = new Date().toLocaleDateString(dateLocale(), { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const prayed = STATIC ? Stats.getPrayers() : [];
+  const prayed = Stats.getPrayers();
   const rows = PRAYERS.map((p) => {
     const obligatory = p.key !== "sunrise";
     const done = prayed.includes(p.key);
-    const toggle = (STATIC && obligatory)
+    const toggle = obligatory
       ? `<button class="pray-toggle ${done ? "done" : ""}" onclick="togglePrayer('${p.key}')" title="${localizedText('Mark as prayed')}" aria-label="${localizedText('Mark as prayed')}">${done ? "✓" : ""}</button>`
       : "";
     return `<div class="prayer-row ${p.key === next.key ? "next" : ""} ${done ? "prayed" : ""}">
@@ -1064,11 +1103,11 @@ function renderPrayer(v) {
     </div>`;
   }).join("");
   const total = OBLIGATORY().length;
-  const streakCard = STATIC ? `
+  const streakCard = `
     <div class="card" style="margin-bottom:16px;text-align:center">
       <div class="big" style="font-size:26px;font-weight:800">🔥 ${Stats.prayerStreak(total)} ${t("days")}</div>
       <div style="color:var(--text-2);font-size:13px;margin-top:4px">${t("streak")} · ${prayed.length}/${total} ${localizedText("prayers")}</div>
-    </div>` : "";
+    </div>`;
   v.innerHTML = head("m_prayer", "m_prayer_d") + streakCard + `
     <div class="card" style="margin-bottom:16px;text-align:center">
       <div style="color:var(--text-2);font-size:13px">📍 ${escapeHtml(loc)}${State.lang === "en" ? " · " + escapeHtml(tz) : ""} · ${t("method_shia")}</div>
