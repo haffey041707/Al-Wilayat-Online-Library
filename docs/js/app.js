@@ -445,14 +445,28 @@ function progressRings(st) {
   const vR = Math.min(1, (st.versesToday || 0) / GOALS.verses);
   const dR = Math.min(1, (st.dhikrToday || 0) / GOALS.dhikr);
   const overall = Math.round(((pR + vR + dR) / 3) * 100);
-  const C = { prayers: "#cc3b3b", verses: "#2f9e57", dhikr: "#a9743e" }; // dark red / dark green / brown
-  const ring = (r, val, color) => {
+  const C = { prayers: "#cc3b3b", verses: "#2f9e57", dhikr: "#a9743e" }; // solid (legend dots)
+  const G = { prayers: ["#e56a6a", "#7e1f1f"], verses: ["#57d693", "#1c6e3f"], dhikr: ["#d7a566", "#734827"] };
+  const grad = (id, a, b) =>
+    `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>`;
+  const ring = (r, val, id) => {
     const c = 2 * Math.PI * r;
     return `<circle cx="100" cy="100" r="${r}" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="15"/>` +
-      `<circle cx="100" cy="100" r="${r}" fill="none" stroke="${color}" stroke-width="15" stroke-linecap="round" ` +
+      `<circle cx="100" cy="100" r="${r}" fill="none" stroke="url(#${id})" stroke-width="15" stroke-linecap="round" ` +
       `stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - val)).toFixed(1)}" ` +
       `transform="rotate(-90 100 100)" style="transition:stroke-dashoffset 1.1s var(--ease)"/>`;
   };
+  // silver shine bead at the leading tip of each ring
+  const tip = (r, val) => {
+    if (val <= 0.001) return "";
+    const ang = (-90 + val * 360) * Math.PI / 180;
+    const x = 100 + r * Math.cos(ang), y = 100 + r * Math.sin(ang);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.6" fill="#eef4fc" filter="url(#silver)"/>`;
+  };
+  // shining dust specks in the three colours
+  const dustC = [C.prayers, C.verses, C.dhikr];
+  const dust = [[26, 34], [172, 44], [184, 150], [30, 162], [150, 22], [52, 182], [180, 96], [20, 100]]
+    .map((d, i) => `<circle class="dust" cx="${d[0]}" cy="${d[1]}" r="${(1.2 + (i % 3) * 0.5).toFixed(1)}" fill="${dustC[i % 3]}" style="animation-delay:${(i * 0.4).toFixed(1)}s"/>`).join("");
   const row = (color, label, a, b) =>
     `<div><span class="dot" style="background:${color}"></span>${label}<b>${a}/${b}</b></div>`;
   return `
@@ -461,7 +475,13 @@ function progressRings(st) {
       <div class="prog-wrap">
         <div class="prog-ring" role="img" aria-label="${overall}% ${localizedText("today")}">
           <svg viewBox="0 0 200 200">
-            ${ring(88, pR, C.prayers)}${ring(65, vR, C.verses)}${ring(44, dR, C.dhikr)}
+            <defs>
+              ${grad("gP", G.prayers[0], G.prayers[1])}${grad("gV", G.verses[0], G.verses[1])}${grad("gD", G.dhikr[0], G.dhikr[1])}
+              <filter id="silver" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="2.3" flood-color="#dfe8f5" flood-opacity="0.95"/></filter>
+            </defs>
+            ${dust}
+            ${ring(88, pR, "gP")}${ring(65, vR, "gV")}${ring(44, dR, "gD")}
+            ${tip(88, pR)}${tip(65, vR)}${tip(44, dR)}
           </svg>
           <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
         </div>
