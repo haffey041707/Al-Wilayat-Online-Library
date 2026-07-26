@@ -463,10 +463,18 @@ function progressRings(st) {
     const x = 100 + r * Math.cos(ang), y = 100 + r * Math.sin(ang);
     return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.6" fill="#eef4fc" filter="url(#silver)"/>`;
   };
-  // shining dust specks in the three colours
+  // real drifting, shining dust in the three colours (particles float up & fade)
   const dustC = [C.prayers, C.verses, C.dhikr];
-  const dust = [[26, 34], [172, 44], [184, 150], [30, 162], [150, 22], [52, 182], [180, 96], [20, 100]]
-    .map((d, i) => `<circle class="dust" cx="${d[0]}" cy="${d[1]}" r="${(1.2 + (i % 3) * 0.5).toFixed(1)}" fill="${dustC[i % 3]}" style="animation-delay:${(i * 0.4).toFixed(1)}s"/>`).join("");
+  const dpos = [[26, 44], [172, 52], [184, 150], [30, 158], [150, 26], [52, 182], [180, 104], [22, 108],
+    [100, 16], [100, 188], [66, 30], [140, 176], [42, 88], [164, 122], [82, 168], [122, 60], [36, 130], [168, 74]];
+  const dust = dpos.map((d, i) => {
+    const dur = (3.4 + (i % 5) * 0.8).toFixed(1);
+    const del = (i * 0.33).toFixed(2);
+    const dx = ((i % 2 ? 1 : -1) * (3 + (i % 4) * 3));
+    const r = (0.8 + (i % 3) * 0.7).toFixed(1);
+    return `<circle class="dust" cx="${d[0]}" cy="${d[1]}" r="${r}" fill="${dustC[i % 3]}" ` +
+      `style="--dx:${dx}px;animation-duration:${dur}s;animation-delay:${del}s"/>`;
+  }).join("");
   const row = (color, label, a, b) =>
     `<div><span class="dot" style="background:${color}"></span>${label}<b>${a}/${b}</b></div>`;
   return `
