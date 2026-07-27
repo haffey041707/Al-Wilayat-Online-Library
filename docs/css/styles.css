@@ -725,16 +725,9 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 .welcome-bar span {
   position: relative; z-index: 1;
   font-size: 21px; font-weight: 800; letter-spacing: .6px;
-  background: linear-gradient(180deg, #f4d97a, #d4af37 55%, #b8892f);
+  background: linear-gradient(180deg, #f2f5fa, #c6cfdb 55%, #9aa6b8);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
-  animation: welcomeGlow 2.6s ease-in-out infinite;
 }
-/* text stays put; only a soft warm-gold glow breathes (no white shade) */
-@keyframes welcomeGlow {
-  0%,100% { filter: drop-shadow(0 0 2px rgba(200,150,40,.3)); }
-  50%     { filter: drop-shadow(0 0 10px rgba(212,175,55,.6)); }
-}
-@media (prefers-reduced-motion: reduce) { .welcome-bar span { animation: none; } }
 @media (max-width: 560px) { .welcome-bar span { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .welcome-bar span { animation: none; } }
