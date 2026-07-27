@@ -712,3 +712,21 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 .jarvis .j-time { fill: #eaf3ff; font-size: 9px; font-weight: 800; }
 
 .jarvis .sweep { animation-duration: 4.5s; }
+
+/* Premium gold welcome bar (above the stat boxes) */
+.welcome-bar {
+  text-align: center; margin: 2px 0 16px; padding: 13px 18px; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(212,175,55,.12), rgba(10,34,84,.20));
+  border: 1px solid rgba(212,175,55,.30);
+  box-shadow: 0 6px 22px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.06);
+}
+.welcome-bar span {
+  font-size: 21px; font-weight: 800; letter-spacing: .6px;
+  background: linear-gradient(90deg, #a9822f, #f4d97a, #d4af37, #f6e39a, #a9822f);
+  background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: goldShine 4.5s linear infinite;
+}
+@keyframes goldShine { to { background-position: 200% center; } }
+@media (max-width: 560px) { .welcome-bar span { font-size: 17px; } }
+@media (prefers-reduced-motion: reduce) { .welcome-bar span { animation: none; } }

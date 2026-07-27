@@ -548,6 +548,15 @@ function progressRings(st) {
     </div>`;
 }
 
+// First-ever visit on this device → "Welcome"; any later visit → "Welcome back".
+function welcomeMessage() {
+  try {
+    if (localStorage.getItem("wilayat.welcomed")) return "Welcome back to Al-Wilayat";
+    localStorage.setItem("wilayat.welcomed", "1");
+  } catch (e) { /* ignore */ }
+  return "Welcome to Al-Wilayat";
+}
+
 // ---------- HOME ----------
 function renderHome(v) {
   const next = nextPrayer();
@@ -559,6 +568,7 @@ function renderHome(v) {
         <img src="assets/kalima-calligraphy.png?v=1" alt="محمد رسول الله" draggable="false" ondragstart="return false" />
       </div>
     </div>
+    <div class="welcome-bar"><span>${welcomeMessage()}</span></div>
     <div class="stat-row">
       <div class="stat"><div class="big">${next.time}</div><div class="lbl">${t("next_prayer")} · ${langName(next)}</div></div>
       <div class="stat"><div class="big">${Stats.prayerStreak(OBLIGATORY().length)} ${t("days")}</div><div class="lbl">${t("streak")}</div></div>
