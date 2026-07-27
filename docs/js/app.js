@@ -440,6 +440,7 @@ const QURAN_TOTAL = 6236;
 const GOALS = { verses: QURAN_TOTAL, dhikr: 100 };
 // Concentric progress rings (prayers / verses / dhikr) — per-user, from localStorage.
 function progressRings(st) {
+  const np = nextPrayer();               // next prayer (name + time) for the HUD centre
   const pt = OBLIGATORY().length;
   const prayed = Stats.getPrayers().length;
   const vCount = (st.readAyatAll || []).length;   // cumulative unique ayahs read (whole Qur'an)
@@ -507,13 +508,8 @@ function progressRings(st) {
         <circle cx="50" cy="50" r="31" fill="none" stroke="#dce4f0" stroke-width="1.6" stroke-dasharray="6 10" opacity=".85"/>
         <circle cx="50" cy="81" r="1.8" fill="#eaf3ff" filter="url(#jglow)"/>
       </g>
-      <g class="j-spin cw fast">
-        <circle cx="50" cy="50" r="22" fill="none" stroke="url(#jg)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="40 98" filter="url(#jglow)"/>
-        <circle cx="72" cy="50" r="1.8" fill="#cdeeff" filter="url(#jglow)"/>
-      </g>
-      <circle class="j-pulse" cx="50" cy="50" r="9" fill="none" stroke="#7fd8ff" stroke-width="1"/>
-      <circle cx="50" cy="50" r="9" fill="none" stroke="#3a6bb5" stroke-width="1" opacity=".5"/>
-      <circle class="j-core" cx="50" cy="50" r="5" fill="url(#jg)" filter="url(#jglow)"/>
+      <text x="50" y="45" text-anchor="middle" class="j-name">${langName(np)}</text>
+      <text x="50" y="59" text-anchor="middle" class="j-time">${np.time}</text>
     </svg>`;
   const row = (color, label, a, b) =>
     `<div><span class="dot" style="background:${color}"></span>${label}<b>${a}/${b}</b></div>`;

@@ -706,3 +706,7 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 @keyframes jcore { 0%,100% { opacity: .8; } 50% { opacity: 1; } }
 @keyframes jpulse { 0% { transform: scale(.55); opacity: .8; } 100% { transform: scale(2); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .jarvis .j-core, .jarvis .j-pulse { animation: none; } }
+
+/* HUD centre: next prayer name + time */
+.jarvis .j-name { fill: #cfe0f5; font-size: 5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+.jarvis .j-time { fill: #eaf3ff; font-size: 9px; font-weight: 800; }
