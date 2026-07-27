@@ -724,16 +724,17 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 .welcome-bar span {
   display: inline-block;
   font-size: 21px; font-weight: 800; letter-spacing: .6px;
-  background: linear-gradient(90deg, #a9822f, #f4d97a, #d4af37, #f6e39a, #a9822f);
-  background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
+  background: linear-gradient(100deg, #a9822f 0%, #d4af37 30%, #fff3c4 48%, #f6e39a 56%, #d4af37 70%, #a9822f 100%);
+  background-size: 250% auto; -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
-  animation: goldShine 4.5s linear infinite, welcomeIn 1s cubic-bezier(.22,1,.36,1) both;
+  animation: goldSweep 3.2s linear infinite, goldGlow 2.8s ease-in-out infinite;
 }
-@keyframes goldShine { to { background-position: 200% center; } }
-@keyframes welcomeIn {
-  0%   { opacity: 0; transform: translateY(12px); letter-spacing: 5px; filter: blur(4px); }
-  60%  { opacity: 1; }
-  100% { opacity: 1; transform: translateY(0); letter-spacing: .6px; filter: blur(0); }
+/* continuous metallic shine travelling across the gold text */
+@keyframes goldSweep { 0% { background-position: 150% center; } 100% { background-position: -50% center; } }
+/* continuous soft gold glow pulse */
+@keyframes goldGlow {
+  0%,100% { filter: drop-shadow(0 0 3px rgba(212,175,55,.22)); }
+  50%     { filter: drop-shadow(0 0 9px rgba(244,217,122,.55)); }
 }
 @media (max-width: 560px) { .welcome-bar span { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .welcome-bar span { animation: none; } }
