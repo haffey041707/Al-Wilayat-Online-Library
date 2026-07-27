@@ -730,10 +730,10 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
   -webkit-text-fill-color: transparent; color: transparent;
   animation: welcomeGlow 2.6s ease-in-out infinite;
 }
-/* text stays put; only a soft gold glow breathes */
+/* text stays put; only a soft warm-gold glow breathes (no white shade) */
 @keyframes welcomeGlow {
-  0%,100% { filter: drop-shadow(0 0 2px rgba(212,175,55,.25)); }
-  50%     { filter: drop-shadow(0 0 11px rgba(244,217,122,.6)); }
+  0%,100% { filter: drop-shadow(0 0 2px rgba(200,150,40,.3)); }
+  50%     { filter: drop-shadow(0 0 10px rgba(212,175,55,.6)); }
 }
 @media (prefers-reduced-motion: reduce) { .welcome-bar span { animation: none; } }
 @media (max-width: 560px) { .welcome-bar span { font-size: 17px; } }
