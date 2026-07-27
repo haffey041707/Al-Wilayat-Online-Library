@@ -583,10 +583,10 @@ function duaDayCard() {
   return `
     <div class="dua-day-card art-${dd.idx % 6}" onclick="openDuaDay()" role="button" tabindex="0">
       <div class="dua-art-pattern"></div>
-      <div class="ddc-inner">
-        <div class="ddc-eyebrow">${DUA_ICON} ${localizedText("Dua of the day")}</div>
-        <div class="ddc-ar" dir="rtl">${dd.dua.ar}</div>
-        <div class="ddc-hint">${localizedText("Tap to read")} ↑</div>
+      <div class="ddc-row">
+        <span class="ddc-ic">${DUA_ICON}</span>
+        <span class="ddc-title">${localizedText("Dua of the day")}</span>
+        <span class="ddc-arrow" aria-hidden="true">↑</span>
       </div>
     </div>`;
 }
