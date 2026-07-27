@@ -563,6 +563,61 @@ function welcomeHTML() {
       : `<span style="animation-delay:${(i * 0.05).toFixed(2)}s">${ch}</span>`).join("");
 }
 
+// ---------- Dua of the day (31 short duas, one per day) ----------
+const DUA_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 5a7 7 0 1 0 0 14 9 9 0 0 1 0-14z"/><path d="M17.2 3l.5 1.6 1.6.5-1.6.5-.5 1.6-.5-1.6-1.6-.5 1.6-.5z"/></svg>';
+function duaOfDay() {
+  const list = (typeof DUAS31 !== "undefined") ? DUAS31 : [];
+  if (!list.length) return null;
+  const d = new Date();
+  const key = d.getFullYear() * 372 + (d.getMonth() + 1) * 31 + d.getDate();
+  const idx = ((key * 2654435761) >>> 0) % list.length;   // stable per day, well spread
+  return { dua: list[idx], idx, day: idx + 1 };
+}
+function duaText(dua) {
+  const f = trField();                                     // ur/fa/az/ms/en or null
+  return (f && f !== "en" && dua[f]) ? dua[f] : dua.en;
+}
+function duaDayCard() {
+  const dd = duaOfDay();
+  if (!dd) return "";
+  return `
+    <div class="dua-day-card art-${dd.idx % 6}" onclick="openDuaDay()" role="button" tabindex="0">
+      <div class="dua-art-pattern"></div>
+      <div class="ddc-inner">
+        <div class="ddc-eyebrow">${DUA_ICON} ${localizedText("Dua of the day")}</div>
+        <div class="ddc-ar" dir="rtl">${dd.dua.ar}</div>
+        <div class="ddc-hint">${localizedText("Tap to read")} ↑</div>
+      </div>
+    </div>`;
+}
+// slide-up sheet with the full dua on an Islamic-art background
+function openDuaDay() {
+  const dd = duaOfDay();
+  if (!dd) return;
+  const dua = dd.dua;
+  const sheet = document.createElement("div");
+  sheet.className = "dua-sheet";
+  sheet.innerHTML = `
+    <div class="dua-sheet-bk"></div>
+    <div class="dua-sheet-panel art-${dd.idx % 6}">
+      <div class="dua-art-pattern"></div>
+      <div class="dsp-grip"></div>
+      <button class="dsp-close" aria-label="Close">×</button>
+      <div class="dsp-content">
+        <div class="ddc-eyebrow">${DUA_ICON} ${localizedText("Dua of the day")} · ${localizedText("Day")} ${dd.day}/31</div>
+        <div class="dsp-ar" dir="rtl">${dua.ar}</div>
+        <div class="dsp-translit">${dua.tr}</div>
+        <div class="dsp-tr">${duaText(dua)}</div>
+        <div class="dsp-src">${dua.src}</div>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+  requestAnimationFrame(() => sheet.classList.add("open"));
+  const close = () => { sheet.classList.remove("open"); setTimeout(() => sheet.remove(), 430); };
+  sheet.querySelector(".dsp-close").onclick = close;
+  sheet.querySelector(".dua-sheet-bk").onclick = close;
+}
+
 // ---------- HOME ----------
 function renderHome(v) {
   const next = nextPrayer();
@@ -576,6 +631,7 @@ function renderHome(v) {
     </div>
     <div class="welcome-bar"><span>${localizedText("Knowledge is better than wealth")}</span></div>
     ${progressRings(st)}
+    ${duaDayCard()}
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
       <button class="btn" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button></div>`}`;
