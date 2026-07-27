@@ -569,12 +569,6 @@ function renderHome(v) {
       </div>
     </div>
     <div class="welcome-bar"><span>${welcomeMessage()}</span></div>
-    <div class="stat-row">
-      <div class="stat"><div class="big">${next.time}</div><div class="lbl">${t("next_prayer")} · ${langName(next)}</div></div>
-      <div class="stat"><div class="big">${Stats.prayerStreak(OBLIGATORY().length)} ${t("days")}</div><div class="lbl">${t("streak")}</div></div>
-      <div class="stat"><div class="big">${st.versesToday || 0} ${t("verses")}</div><div class="lbl">${t("read_today")}</div></div>
-      <div class="stat"><div class="big">${st.dhikrToday || 0} ${t("times")}</div><div class="lbl">${t("dhikr_today")}</div></div>
-    </div>
     ${progressRings(st)}
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
