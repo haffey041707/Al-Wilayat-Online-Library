@@ -631,7 +631,6 @@ function renderHome(v) {
     </div>
     <div class="welcome-bar"><span>${localizedText("Knowledge is better than wealth")}</span></div>
     ${progressRings(st)}
-    ${duaDayCard()}
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
       <button class="btn" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button></div>`}`;
