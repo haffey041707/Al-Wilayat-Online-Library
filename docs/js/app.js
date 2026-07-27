@@ -556,6 +556,12 @@ function welcomeMessage() {
   } catch (e) { /* ignore */ }
   return "Welcome to Al-Wilayat";
 }
+// Split the welcome text into per-letter spans for a continuous ripple wave.
+function welcomeHTML() {
+  return [...welcomeMessage()].map((ch, i) =>
+    ch === " " ? '<span class="sp">&nbsp;</span>'
+      : `<span style="animation-delay:${(i * 0.05).toFixed(2)}s">${ch}</span>`).join("");
+}
 
 // ---------- HOME ----------
 function renderHome(v) {
@@ -568,7 +574,7 @@ function renderHome(v) {
         <img src="assets/kalima-calligraphy.png?v=1" alt="محمد رسول الله" draggable="false" ondragstart="return false" />
       </div>
     </div>
-    <div class="welcome-bar"><span>${welcomeMessage()}</span></div>
+    <div class="welcome-bar">${welcomeHTML()}</div>
     ${progressRings(st)}
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
