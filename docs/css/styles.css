@@ -731,3 +731,8 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 }
 @media (max-width: 560px) { .welcome-bar span { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .welcome-bar span { animation: none; } }
+
+/* Prayer toggle: locked until the prayer time arrives */
+.pray-toggle svg { width: 15px; height: 15px; display: block; }
+.pray-toggle.locked { background: transparent; border-color: var(--glass-brd); color: var(--text-2); opacity: .55; cursor: not-allowed; }
+.pray-toggle.locked:hover { border-color: var(--glass-brd); }

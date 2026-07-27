@@ -1175,12 +1175,21 @@ function renderPrayer(v) {
   const tz = (State.prayer && State.prayer.tz) || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const dateStr = new Date().toLocaleDateString(dateLocale(), { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const prayed = Stats.getPrayers();
+  // Current time in the prayer timezone → only allow marking a prayer once its time has entered.
+  const nowStr = new Date().toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false });
+  const toMin = (x) => { const m = (x || "").match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : 0; };
+  const nowMin = toMin(nowStr);
+  const lockIco = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
   const rows = PRAYERS.map((p) => {
     const obligatory = p.key !== "sunrise";
     const done = prayed.includes(p.key);
-    const toggle = obligatory
-      ? `<button class="pray-toggle ${done ? "done" : ""}" onclick="togglePrayer('${p.key}')" title="${localizedText('Mark as prayed')}" aria-label="${localizedText('Mark as prayed')}">${done ? "✓" : ""}</button>`
-      : "";
+    const entered = nowMin >= toMin(times[p.key] || p.time);   // has this prayer's time arrived today?
+    let toggle = "";
+    if (obligatory) {
+      toggle = entered
+        ? `<button class="pray-toggle ${done ? "done" : ""}" onclick="togglePrayer('${p.key}')" title="${localizedText('Mark as prayed')}" aria-label="${localizedText('Mark as prayed')}">${done ? "✓" : ""}</button>`
+        : `<button class="pray-toggle locked" disabled title="${localizedText('You can mark it after the prayer time')}" aria-label="locked">${lockIco}</button>`;
+    }
     return `<div class="prayer-row ${p.key === next.key ? "next" : ""} ${done ? "prayed" : ""}">
       <div class="pn">${langName(p)} ${p.key === next.key ? "· " + t("next_prayer") : ""}</div>
       <div class="pt">${times[p.key] || p.time}</div>${toggle}
