@@ -722,12 +722,18 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
   box-shadow: 0 6px 22px rgba(0,0,0,.28), inset 0 1px 0 rgba(108,184,255,.14);
 }
 .welcome-bar span {
+  display: inline-block;
   font-size: 21px; font-weight: 800; letter-spacing: .6px;
   background: linear-gradient(90deg, #a9822f, #f4d97a, #d4af37, #f6e39a, #a9822f);
   background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
-  animation: goldShine 4.5s linear infinite;
+  animation: goldShine 4.5s linear infinite, welcomeIn 1s cubic-bezier(.22,1,.36,1) both;
 }
 @keyframes goldShine { to { background-position: 200% center; } }
+@keyframes welcomeIn {
+  0%   { opacity: 0; transform: translateY(12px); letter-spacing: 5px; filter: blur(4px); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0); letter-spacing: .6px; filter: blur(0); }
+}
 @media (max-width: 560px) { .welcome-bar span { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .welcome-bar span { animation: none; } }
