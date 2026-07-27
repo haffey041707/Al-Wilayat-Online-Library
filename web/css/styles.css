@@ -344,10 +344,11 @@ body[dir="rtl"] .nav-item:hover { transform: translateX(-4px); }
 /* ---------- Generic content cards ---------- */
 .card { padding: 22px; border-radius: var(--radius); background: var(--glass-bg); border: 1px solid var(--glass-brd); -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur)); }
 .card + .card { margin-top: 16px; }
-.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 16px; margin-bottom: 26px; }
-.stat { padding: 18px; border-radius: var(--radius-sm); background: var(--glass-bg); border: 1px solid var(--glass-brd); }
-.stat .big { font-size: 28px; font-weight: 800; color: var(--text-0); }
-.stat .lbl { color: var(--text-2); font-size: 12.5px; margin-top: 4px; }
+.stat-row { display: flex; align-items: stretch; background: var(--glass-bg); border: 1px solid var(--glass-brd); border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 20px; }
+.stat { flex: 1; padding: 15px 10px; text-align: center; border-inline-start: 1px solid var(--glass-brd); }
+.stat:first-child { border-inline-start: none; }
+.stat .big { font-size: 24px; font-weight: 800; color: var(--text-0); }
+.stat .lbl { color: var(--text-2); font-size: 12px; margin-top: 4px; }
 
 /* List item */
 .list-item {
@@ -615,8 +616,8 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
   .module-card .m-ic { width: 42px; height: 42px; font-size: 21px; margin-bottom: 10px; border-radius: 12px; }
   .module-card h3 { font-size: 14px; margin-bottom: 3px; }
   .module-card p { font-size: 11.5px; line-height: 1.4; }
-  .stat-row { grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
-  .stat { padding: 11px 5px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .stat-row { margin-bottom: 16px; }
+  .stat { padding: 12px 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .stat .big { font-size: 16px; line-height: 1.15; }
   .stat .lbl { font-size: 9.5px; margin-top: 3px; line-height: 1.2; }
 }
