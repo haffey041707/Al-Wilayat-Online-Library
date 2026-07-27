@@ -565,6 +565,15 @@ function welcomeHTML() {
 
 // ---------- Dua of the day (31 short duas, one per day) ----------
 const DUA_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 5a7 7 0 1 0 0 14 9 9 0 0 1 0-14z"/><path d="M17.2 3l.5 1.6 1.6.5-1.6.5-.5 1.6-.5-1.6-1.6-.5 1.6-.5z"/></svg>';
+const QA_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.6 9a2.4 2.4 0 1 1 3 2.3c-.6.2-1 .7-1 1.3v.3"/><path d="M12 16.5h.01"/></svg>';
+function qaBar() {
+  return `
+    <button class="option-bar">
+      <span class="ob-ic">${QA_ICON}</span>
+      <span class="ob-title">${localizedText("Q&A")}</span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`;
+}
 function duaOfDay() {
   const list = (typeof DUAS31 !== "undefined") ? DUAS31 : [];
   if (!list.length) return null;
@@ -601,6 +610,7 @@ function renderHome(v) {
     <div class="welcome-bar"><span>${localizedText("Knowledge is better than wealth")}</span></div>
     ${progressRings(st)}
     ${duaDayCard()}
+    ${qaBar()}
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
       <button class="btn" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button></div>`}`;
