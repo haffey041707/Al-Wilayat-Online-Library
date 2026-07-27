@@ -738,12 +738,6 @@ body[dir="rtl"] .list-item:hover { transform: translateX(-5px); }
 .pray-toggle.locked:hover { border-color: var(--glass-brd); }
 
 /* Dua-of-day home element: compact clickable title bar */
-.dua-day-card { padding: 15px 18px; }
-.ddc-row { position: relative; z-index: 1; display: flex; align-items: center; gap: 11px; }
-.ddc-ic { display: inline-grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; background: rgba(255,255,255,.14); color: #fff; }
-.ddc-ic svg { width: 17px; height: 17px; }
-.ddc-title { font-size: 15.5px; font-weight: 700; letter-spacing: .3px; color: #fff; }
-.ddc-arrow { margin-inline-start: auto; color: rgba(255,255,255,.85); font-size: 18px; font-weight: 700; }
 
 /* Reusable option bar (stack more below) */
 .option-bar {

@@ -580,38 +580,11 @@ function duaText(dua) {
 function duaDayCard() {
   if (typeof DUAS31 === "undefined" || !DUAS31.length) return "";
   return `
-    <button class="option-bar" onclick="openDuaDay()">
+    <button class="option-bar">
       <span class="ob-ic">${DUA_ICON}</span>
       <span class="ob-title">${localizedText("Dua of the Day")}</span>
       <span class="ob-arrow" aria-hidden="true">›</span>
     </button>`;
-}
-// slide-up sheet with the full dua on an Islamic-art background
-function openDuaDay() {
-  const dd = duaOfDay();
-  if (!dd) return;
-  const dua = dd.dua;
-  const sheet = document.createElement("div");
-  sheet.className = "dua-sheet";
-  sheet.innerHTML = `
-    <div class="dua-sheet-bk"></div>
-    <div class="dua-sheet-panel art-${dd.idx % 6}">
-      <div class="dua-art-pattern"></div>
-      <div class="dsp-grip"></div>
-      <button class="dsp-close" aria-label="Close">×</button>
-      <div class="dsp-content">
-        <div class="ddc-eyebrow">${DUA_ICON} ${localizedText("Dua of the day")} · ${localizedText("Day")} ${dd.day}/31</div>
-        <div class="dsp-ar" dir="rtl">${dua.ar}</div>
-        <div class="dsp-translit">${dua.tr}</div>
-        <div class="dsp-tr">${duaText(dua)}</div>
-        <div class="dsp-src">${dua.src}</div>
-      </div>
-    </div>`;
-  document.body.appendChild(sheet);
-  requestAnimationFrame(() => sheet.classList.add("open"));
-  const close = () => { sheet.classList.remove("open"); setTimeout(() => sheet.remove(), 430); };
-  sheet.querySelector(".dsp-close").onclick = close;
-  sheet.querySelector(".dua-sheet-bk").onclick = close;
 }
 
 // ---------- HOME ----------
