@@ -500,8 +500,6 @@ function progressRings(st) {
         </linearGradient>
         <filter id="jglow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="1.4" flood-color="#57b6ff" flood-opacity=".9"/></filter>
       </defs>
-      <!-- rotating radar sweep (behind) -->
-      <g class="j-spin cw sweep"><path d="M50 50 L50 8 A42 42 0 0 1 77 17.8 Z" fill="url(#jsweep)"/><line x1="50" y1="50" x2="50" y2="8" stroke="#9fe9ff" stroke-width="1" opacity=".85" filter="url(#jglow)"/></g>
       <!-- twin bezel + ticks -->
       <circle cx="50" cy="50" r="47.5" fill="none" stroke="#3a4f74" stroke-width=".6" opacity=".55"/>
       <circle cx="50" cy="50" r="45" fill="none" stroke="#24365c" stroke-width=".5" opacity=".5"/>
@@ -511,12 +509,10 @@ function progressRings(st) {
       <!-- outer segmented gradient ring -->
       <g class="j-spin cw slow">
         <circle cx="50" cy="50" r="40" fill="none" stroke="url(#jg)" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="30 10 7 10 30 10 7 10" filter="url(#jglow)"/>
-        <circle cx="90" cy="50" r="2.4" fill="#cdeeff" filter="url(#jglow)"/>
       </g>
       <!-- mid dashed ring -->
       <g class="j-spin ccw">
         <circle cx="50" cy="50" r="31" fill="none" stroke="#dce4f0" stroke-width="1.5" stroke-dasharray="5 9" opacity=".85"/>
-        <circle cx="50" cy="81" r="1.8" fill="#eaf3ff" filter="url(#jglow)"/>
       </g>
       <!-- inner static frame -->
       <circle cx="50" cy="50" r="25" fill="none" stroke="#2a6fd6" stroke-width=".8" opacity=".4" stroke-dasharray="2 4"/>
