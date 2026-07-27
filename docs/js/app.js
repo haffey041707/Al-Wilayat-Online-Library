@@ -578,17 +578,13 @@ function duaText(dua) {
   return (f && f !== "en" && dua[f]) ? dua[f] : dua.en;
 }
 function duaDayCard() {
-  const dd = duaOfDay();
-  if (!dd) return "";
+  if (typeof DUAS31 === "undefined" || !DUAS31.length) return "";
   return `
-    <div class="dua-day-card art-${dd.idx % 6}" onclick="openDuaDay()" role="button" tabindex="0">
-      <div class="dua-art-pattern"></div>
-      <div class="ddc-row">
-        <span class="ddc-ic">${DUA_ICON}</span>
-        <span class="ddc-title">${localizedText("Dua of the day")}</span>
-        <span class="ddc-arrow" aria-hidden="true">↑</span>
-      </div>
-    </div>`;
+    <button class="option-bar" onclick="openDuaDay()">
+      <span class="ob-ic">${DUA_ICON}</span>
+      <span class="ob-title">${localizedText("Dua of the Day")}</span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`;
 }
 // slide-up sheet with the full dua on an Islamic-art background
 function openDuaDay() {
