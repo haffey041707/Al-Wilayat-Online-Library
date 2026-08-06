@@ -4,7 +4,7 @@
 
 **A complete Shia Islamic super-app — Qur'an, Hadith, Du'a, Ziyarat, prayer times, Qibla, the Islamic calendar, and more, in 9 languages.**
 
-_Powered by Texa_
+_Powered by Aeba_
 
 ⚠️ **View-only. All Rights Reserved.** See [LICENSE](LICENSE) — this project may be **viewed only**; it may not be copied, used, modified, or redistributed.
 
@@ -69,5 +69,5 @@ The Qur'an, Hadith, Du'a, and Ziyarat are the shared religious heritage of the M
 
 ## 📜 License
 
-**Proprietary — All Rights Reserved (View-Only).** © 2026 Texa (Muhammad Hafeez).
+**Proprietary — All Rights Reserved (View-Only).** © 2026 Aeba (Muhammad Hafeez).
 You may **view** this project only. Copying, using, modifying, redistributing, or claiming ownership of any part is **not permitted** without written permission. See [LICENSE](LICENSE).
