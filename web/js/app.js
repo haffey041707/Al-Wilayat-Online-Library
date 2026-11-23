@@ -8,7 +8,8 @@
 const API_BASE = (typeof window !== "undefined" && window.WILAYAT_API) || "/api";
 
 const State = {
-  lang: localStorage.getItem("wilayat.lang") || "en",
+  // Kashmiri (ks) was removed — anyone who had it saved falls back to Urdu.
+  lang: (localStorage.getItem("wilayat.lang") === "ks" ? "ur" : (localStorage.getItem("wilayat.lang") || "en")),
   theme: "dark",
   route: "home",
   prayer: null,   // { times, tz, label } once loaded for the user's location
@@ -163,10 +164,10 @@ function offlineBanner() {
 }
 // Maps each UI language onto the language whose CONTENT (phrase map + data) to use.
 // Dari→Persian, Kashmiri→Urdu, Azerbaijani/Malay/Singapore borrow per case.
-const CONTENT_LANG = { en: "en", sg: "en", az: "az", ms: "ms", ur: "ur", ks: "ur", fa: "fa", prs: "fa", ar: "ar" };
+const CONTENT_LANG = { en: "en", az: "az", ms: "ms", ur: "ur", ks: "ur", fa: "fa", ar: "ar" };
 const contentLang = () => CONTENT_LANG[State.lang] || "en";
 // Quran/verse translation field (verse data carries en/ur/fa/az/ms; ks→ur, prs→fa, sg→en).
-const trField = () => ({ en: "en", sg: "en", az: "az", ms: "ms", ur: "ur", ks: "ur", fa: "fa", prs: "fa", ar: null }[State.lang] ?? null);
+const trField = () => ({ en: "en", az: "az", ms: "ms", ur: "ur", ks: "ur", fa: "fa", ar: null }[State.lang] ?? null);
 let currentAudio = null;
 // Clean play / pause glyphs (SVG, not emoji) for the recitation buttons.
 const ICON_PLAY = '<svg class="picon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
@@ -215,7 +216,7 @@ function applyLang() {
 }
 
 // ---------------- Locale numerals + phrase translation ----------------
-const DIGIT_SETS = { ar: "٠١٢٣٤٥٦٧٨٩", ur: "۰۱۲۳۴۵۶۷۸۹", fa: "۰۱۲۳۴۵۶۷۸۹", prs: "۰۱۲۳۴۵۶۷۸۹", ks: "۰۱۲۳۴۵۶۷۸۹" };
+const DIGIT_SETS = { ar: "٠١٢٣٤٥٦٧٨٩", ur: "۰۱۲۳۴۵۶۷۸۹", fa: "۰۱۲۳۴۵۶۷۸۹", ks: "۰۱۲۳۴۵۶۷۸۹" };
 let _phraseRe = null;
 function buildPhraseRegex() {
   if (typeof PHRASES === "undefined") return;
@@ -314,19 +315,89 @@ function appBack(fallback = "home") {
   if (State.route !== fallback) go(fallback);
 }
 
+// Position the glass pill under a given bottom-nav item.
+function _bnavPillTo(bn, it) {
+  const pill = bn.querySelector(".bnav-pill");
+  if (!pill || !it) return;
+  pill.style.width = it.offsetWidth + "px";
+  pill.style.height = it.offsetHeight + "px";
+  pill.style.transform = `translate(${it.offsetLeft}px, ${it.offsetTop}px)`;
+  pill.style.opacity = "1";
+}
+// Slide the frosted-glass highlight pill under the active bottom-nav icon.
+function moveBnavPill() {
+  const bn = el("#bottomNav"); if (!bn) return;
+  _bnavPillTo(bn, bn.querySelector(".bottom-item.active"));
+}
+// Drag support: the glass pill travels continuously WITH your finger across the
+// bar (no jumping); on release it snaps to the nearest icon and selects it.
+function setupBnavDrag(bn) {
+  const items = () => [...bn.querySelectorAll(".bottom-item")];
+  const nearestItem = (clientX) => {
+    let best = null, bestD = Infinity;
+    items().forEach((it) => {
+      const r = it.getBoundingClientRect();
+      const d = Math.abs(clientX - (r.left + r.width / 2));
+      if (d < bestD) { bestD = d; best = it; }
+    });
+    return best;
+  };
+  let dragging = false, pw = 0, ph = 0, topY = 0, minX = 0, maxX = 0;
+  const follow = (clientX) => {
+    const pill = bn.querySelector(".bnav-pill"); if (!pill) return;
+    let x = clientX - bn.getBoundingClientRect().left - pw / 2;
+    x = Math.max(minX, Math.min(maxX, x));
+    pill.style.transform = `translate(${x}px, ${topY}px) scale(1.16)`;  // grows while dragging
+  };
+  bn.addEventListener("pointerdown", (e) => {
+    const list = items(); if (!list.length) return;
+    dragging = true;
+    try { bn.setPointerCapture(e.pointerId); } catch (_) {}
+    const act = bn.querySelector(".bottom-item.active") || list[0];
+    pw = act.offsetWidth; ph = act.offsetHeight; topY = act.offsetTop;
+    minX = list[0].offsetLeft;
+    maxX = list[list.length - 1].offsetLeft + list[list.length - 1].offsetWidth - pw;
+    const pill = bn.querySelector(".bnav-pill");
+    pill.style.transition = "none";                 // 1:1 with the finger, no easing/jump
+    pill.style.width = pw + "px"; pill.style.height = ph + "px"; pill.style.opacity = "1";
+    follow(e.clientX);
+  });
+  bn.addEventListener("pointermove", (e) => { if (dragging) follow(e.clientX); });
+  const finish = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    const pill = bn.querySelector(".bnav-pill");
+    if (pill) pill.style.transition = "";           // restore smooth snap
+    const it = nearestItem(e.clientX);
+    if (it) { _bnavPillTo(bn, it); if (it.dataset.route) go(it.dataset.route); }
+  };
+  bn.addEventListener("pointerup", finish);
+  bn.addEventListener("pointercancel", () => {
+    dragging = false;
+    const pill = bn.querySelector(".bnav-pill"); if (pill) pill.style.transition = "";
+    moveBnavPill();
+  });
+}
+
 function go(route, options = {}) {
   route = normalizeRoute(route);
   if (route !== "qibla") stopQiblaCompass();
   stopSurahAudio();   // stop any Quran recitation when navigating away / going back
   State.route = route;
   els(".nav-item, .bottom-item").forEach((n) => n.classList.toggle("active", n.dataset.route === route));
+  moveBnavPill();
   els(".view").forEach((v) => v.classList.remove("active"));
   const view = el("#view-" + route);
   if (view) {
     view.classList.add("active");
     view.scrollIntoView({ behavior: "instant", block: "start" });
+    // Modules opened from Explore (non-primary sections) rise up like a bottom sheet.
+    view.classList.remove("sheet-in");
+    if (route !== "home" && !isPrimaryRoute(route)) { void view.offsetWidth; view.classList.add("sheet-in"); }
   }
   RENDERERS[route] && RENDERERS[route](view);
+  // Sections reached from the Settings sheet open full-screen (no phone bottom nav).
+  document.body.classList.toggle("settings-route", route !== "home" && !isPrimaryRoute(route));
   el("#sidebar").classList.remove("open");
   window.scrollTo({ top: 0 });
   syncHistory(route, options);
@@ -342,6 +413,17 @@ const RENDERERS = {
   home: renderHome,
   quran: renderQuran,
   hadith: renderHadith,
+  explore: renderExplore,
+  mahdi: renderMahdi,
+  progress: renderProgress,
+  ahlquran: renderAhlQuran,
+  events: renderEvents,
+  journey: renderJourney,
+  proofs: renderProofs,
+  science: renderScience,
+  holy: renderHolyBooks,
+  life: renderLife,
+  tafsir: renderTafsir,
   dua: renderDua,
   ziyarat: renderZiyarat,
   prayer: renderPrayer,
@@ -375,7 +457,7 @@ const Stats = {
   save(s) { try { localStorage.setItem(this.KEY, JSON.stringify(s)); } catch { /* ignore */ } },
   _roll(s) {
     const t = this._today();
-    if (s.date !== t) { s.date = t; s.versesToday = 0; s.dhikrToday = 0; s.readSurahs = []; s.readAyat = []; }
+    if (s.date !== t) { s.date = t; s.versesToday = 0; s.dhikrToday = 0; s.readSurahs = []; s.readAyat = []; s.readHadithDay = []; }
     return s;
   },
   get() { const s = this._roll(this.load()); this.save(s); return s; },
@@ -408,6 +490,36 @@ const Stats = {
     if (!s.readAyatAll.includes(key)) { s.readAyatAll.push(key); changed = true; }
     if (changed) this.save(s);
   },
+  // Count a single hadith as read (once per hadith per day) — feeds the hadith graph.
+  addHadithRead(key) {
+    const s = this.get();
+    s.readHadithDay = s.readHadithDay || [];   // today (resets daily)
+    s.readHadithAll = s.readHadithAll || [];   // all-time unique
+    s.hadithHist = s.hadithHist || {};         // { "YYYY-MM-DD": count }
+    let changed = false;
+    const today = this._today();
+    if (!s.readHadithDay.includes(key)) {
+      s.readHadithDay.push(key);
+      s.hadithHist[today] = (s.hadithHist[today] || 0) + 1;
+      changed = true;
+    }
+    if (!s.readHadithAll.includes(key)) { s.readHadithAll.push(key); changed = true; }
+    if (changed) this.save(s);
+  },
+  // Current calendar week, Sunday → Saturday, with each day's hadith-read count.
+  hadithWeek() {
+    const hist = this.get().hadithHist || {};
+    const todayKey = this._today();
+    const base = new Date(todayKey + "T00:00:00Z");   // UTC midnight of today's key
+    const dow = base.getUTCDay();                      // 0 = Sunday
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(base); d.setUTCDate(base.getUTCDate() - dow + i);
+      const key = d.toISOString().slice(0, 10);
+      out.push({ key, dow: d.getUTCDay(), count: hist[key] || 0, isToday: key === todayKey });
+    }
+    return out;
+  },
   // ---- Per-device prayer tracking (live build) ----
   getPrayers(date) { const s = this.load(); return (s.prayers && s.prayers[date || this._today()]) || []; },
   togglePrayer(key) {
@@ -431,6 +543,15 @@ const Stats = {
     while ((pr[iso(day)] || []).length >= total) { streak++; day = new Date(day.getTime() - 864e5); }
     return streak;
   },
+  // ---- Dua / Ziyarat reads (all-time unique, per kind) ----
+  addTextRead(kind, id) {
+    if (!id) return;
+    const s = this.load();
+    s.readText = s.readText || {};
+    s.readText[kind] = s.readText[kind] || [];
+    if (!s.readText[kind].includes(id)) { s.readText[kind].push(id); this.save(s); }
+  },
+  readCount(kind) { const s = this.load(); return ((s.readText || {})[kind] || []).length; },
 };
 // The 5 obligatory daily prayers (Sunrise is not a prayer).
 const OBLIGATORY = () => PRAYERS.filter((p) => p.key !== "sunrise");
@@ -540,9 +661,9 @@ function progressRings(st) {
           <div class="prog-center"><div class="big">${overall}%</div><div class="lbl">${localizedText("today")}</div></div>
         </div>
         <div class="prog-legend">
-          ${row(C.prayers, localizedText("Prayers"), prayed, pt)}
-          ${row(C.verses, localizedText("Verses"), vCount, GOALS.verses)}
-          ${row(C.dhikr, localizedText("Dhikr"), st.dhikrToday || 0, GOALS.dhikr)}
+          <div><span class="dot" style="background:${C.prayers}"></span><span class="leg-name">${localizedText("Day streak")}</span><b>${st.streak || 1}</b></div>
+          <div><span class="dot" style="background:${C.verses}"></span><span class="leg-name">${localizedText("Prayer streak")}</span><b>${prayed}/${pt}</b></div>
+          <div><span class="dot" style="background:${C.dhikr}"></span><span class="leg-name">${localizedText("Dhikr")}</span><b>${st.dhikrToday || 0}/${GOALS.dhikr}</b></div>
         </div>
       </div>
     </div>`;
@@ -568,18 +689,80 @@ const DUA_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 const QA_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>';
 function qaBar() {
   return `
-    <button class="option-bar">
+    <button class="option-bar" onclick="openQA()">
       <span class="ob-ic">${QA_ICON}</span>
       <span class="ob-title">${localizedText("Q&A")}</span>
       <span class="ob-arrow" aria-hidden="true">›</span>
     </button>`;
 }
+
+// ---------- SAVED (bookmarked Qur'an surahs) ----------
+const SAVE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+// Clean line icons for the hadith/collection bars (replace the old book emojis).
+const SEARCH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
+const PIN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+const BELL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
+const BOOK_ICON  ='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+const BOOKS_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+const BOOK_OFF_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/><line x1="3" y1="3" x2="21" y2="21"/></svg>';
+const Saved = {
+  KEY: "wilayat.saved",
+  load() { try { return JSON.parse(localStorage.getItem(this.KEY) || "[]"); } catch { return []; } },
+  store(a) { try { localStorage.setItem(this.KEY, JSON.stringify(a)); } catch { /* ignore */ } },
+  has(id) { return this.load().some((x) => x.id === id); },
+  toggle(item) {
+    const a = this.load(); const i = a.findIndex((x) => x.id === item.id);
+    if (i >= 0) { a.splice(i, 1); this.store(a); return false; }
+    a.unshift(item); this.store(a); return true;
+  },
+  remove(id) { this.store(this.load().filter((x) => x.id !== id)); },
+};
+let _savedSurahMeta = {};
+function toggleSaveSurah(n, btn) {
+  const m = _savedSurahMeta[n] || {};
+  const on = Saved.toggle({ id: "surah-" + n, type: "surah", n, ar: m.ar || "", name: m.name || ("Surah " + n) });
+  if (btn) btn.classList.toggle("saved", on);
+  toast(localizedText(on ? "Saved" : "Removed"));
+}
+function savedBar() {
+  return `
+    <button class="option-bar" onclick="openSaved()">
+      <span class="ob-ic">${SAVE_ICON}</span>
+      <span class="ob-title">${localizedText("Saved")}</span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`;
+}
+function openSaved() {
+  const items = Saved.load();
+  const list = items.length ? items.map((x) => `
+    <div class="list-item" onclick="openSavedItem('${x.id}')">
+      <div class="badge-num">${SAVE_ICON}</div>
+      <div class="meta"><div class="t">${x.name || ("Surah " + x.n)}</div><div class="s">${localizedText("Qur'an")}</div></div>
+      ${x.ar ? `<div class="side-ar" dir="rtl" lang="ar">${x.ar}</div>` : ""}
+      <button class="icon-btn" style="flex-shrink:0" onclick="event.stopPropagation();removeSaved('${x.id}')" aria-label="${localizedText("Remove")}">×</button>
+    </div>`).join("")
+    : `<p class="ev-intro" dir="ltr">${localizedText("No saved items yet. Tap the bookmark ⌾ on a surah to save it here.")}</p>`;
+  openQuranReader(`
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText("Saved")}</span>
+      </div>
+      <div class="qr-body">${list}</div>
+    </div>`);
+}
+function openSavedItem(id) {
+  const x = Saved.load().find((i) => i.id === id);
+  if (x && x.type === "surah") openSurah(x.n);
+}
+function removeSaved(id) { Saved.remove(id); openSaved(); }
 function duaOfDay() {
   const list = (typeof DUAS31 !== "undefined") ? DUAS31 : [];
   if (!list.length) return null;
   const d = new Date();
-  const key = d.getFullYear() * 372 + (d.getMonth() + 1) * 31 + d.getDate();
-  const idx = ((key * 2654435761) >>> 0) % list.length;   // stable per day, well spread
+  // whole-day count in local time → advances by exactly 1 each calendar day
+  const dayCount = Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+  const idx = ((dayCount % list.length) + list.length) % list.length;   // cycles 0..30, one per day
   return { dua: list[idx], idx, day: idx + 1 };
 }
 function duaText(dua) {
@@ -589,11 +772,197 @@ function duaText(dua) {
 function duaDayCard() {
   if (typeof DUAS31 === "undefined" || !DUAS31.length) return "";
   return `
-    <button class="option-bar">
+    <button class="option-bar" onclick="openDuaDay()">
       <span class="ob-ic">${DUA_ICON}</span>
       <span class="ob-title">${localizedText("Dua of the Day")}</span>
       <span class="ob-arrow" aria-hidden="true">›</span>
     </button>`;
+}
+
+// ---------- DUA OF THE DAY (slide-up sheet) ----------
+let _duaIdx = 0;
+function duaSheetHTML(idx) {
+  const list = (typeof DUAS31 !== "undefined") ? DUAS31 : [];
+  if (!list.length) return "";
+  if (idx == null) idx = duaOfDay().idx;
+  _duaIdx = ((idx % list.length) + list.length) % list.length;
+  const d = list[_duaIdx];
+  const meaning = duaText(d);
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  return `
+    <div class="dua-hero">
+      <img class="dua-hero-img" src="assets/dua-hands.jpg?v=1" alt="" draggable="false" ondragstart="return false" />
+      <div class="dua-hero-shade"></div>
+      <div class="dua-hero-top">
+        <span class="dua-top-left">
+          <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <span class="dua-eyebrow">${localizedText("Dua of the Day")}</span>
+        </span>
+      </div>
+    </div>
+    <div class="dua-panel" dir="${rtl ? "rtl" : "ltr"}">
+      <div class="dua-hero-ar" dir="rtl" lang="ar">${d.ar}</div>
+      ${d.tr ? `<div class="dua-translit">${d.tr}</div>` : ""}
+      <div class="dua-meaning">${meaning}</div>
+      ${d.src ? `<div class="dua-src">${d.src}</div>` : ""}
+      <button class="dua-recite" onclick="duaRecite()" aria-label="${localizedText("Recite")}">
+        <span class="dr-ic dr-play"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></span>
+        <span class="dr-ic dr-stop"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></span>
+        <span class="dr-label">${localizedText("Recite")}</span>
+      </button>
+    </div>`;
+}
+let _duaSpeaking = false;
+function duaRecite() {
+  const synth = window.speechSynthesis;
+  const list = (typeof DUAS31 !== "undefined") ? DUAS31 : [];
+  const btn = document.querySelector(".dua-recite");
+  if (!synth || !list.length) { toast(localizedText("Voice not available")); return; }
+  if (synth.speaking || synth.paused) { synth.cancel(); return; }   // toggle off
+  const d = list[_duaIdx];
+  const u = new SpeechSynthesisUtterance(d.ar);
+  u.lang = "ar-SA"; u.rate = 0.78; u.pitch = 1;
+  const ar = (synth.getVoices() || []).find((v) => /^ar/i.test(v.lang));
+  if (ar) u.voice = ar;
+  const setLabel = (txt) => { const l = document.querySelector(".dua-recite .dr-label"); if (l) l.textContent = txt; };
+  u.onstart = () => { _duaSpeaking = true; btn && btn.classList.add("playing"); setLabel(localizedText("Stop")); };
+  u.onend = u.onerror = () => { _duaSpeaking = false; const b = document.querySelector(".dua-recite"); b && b.classList.remove("playing"); setLabel(localizedText("Recite")); };
+  synth.cancel();
+  synth.speak(u);
+}
+function stopDuaRecite() { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {} }
+function openDuaDay() {
+  const body = el("#duaSheetBody");
+  if (body) body.innerHTML = duaSheetHTML();
+  el("#duaSheet")?.classList.add("open");
+  el("#duaBackdrop")?.classList.add("open");
+  document.body.classList.add("sheet-lock");
+  if (!(history.state && history.state.duaOpen)) {
+    history.pushState({ wilayat: true, route: State.route, index: _navIndex, duaOpen: true },
+      "", location.href);
+  }
+}
+function closeDuaDay() {
+  stopDuaRecite();
+  el("#duaSheet")?.classList.remove("open");
+  el("#duaBackdrop")?.classList.remove("open");
+  document.body.classList.remove("sheet-lock");
+}
+
+// ---------- Q&A QUIZ (slide-up sheet) ----------
+const QUIZ_LANG = () => ({ en:"en", ar:"ar", ur:"ur", ks:"ur", fa:"fa", az:"az", ms:"ms" }[State.lang] || "en");
+const qL = (o) => (o && (o[QUIZ_LANG()] || o.en)) || "";
+let _quiz = null;   // { order:[], i, score, answered }
+
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+function qaSheetShell() {
+  return `
+    <div class="dua-hero qa-hero">
+      <img class="dua-hero-img qa-img" src="assets/qa-mosque.jpg?v=2" alt="" draggable="false" ondragstart="return false" />
+      <div class="dua-hero-shade"></div>
+      <div class="dua-hero-top">
+        <span class="dua-top-left">
+          <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <span class="dua-eyebrow">${localizedText("Q&A")}</span>
+        </span>
+      </div>
+    </div>
+    <div class="quiz-wrap" id="quizWrap"></div>`;
+}
+function quizStart() {
+  const list = (typeof QUIZ50 !== "undefined") ? QUIZ50 : [];
+  _quiz = { order: shuffle(list.map((_, i) => i)), i: 0, score: 0, answered: false };
+  quizRender();
+}
+function quizRender() {
+  const wrap = el("#quizWrap");
+  const list = (typeof QUIZ50 !== "undefined") ? QUIZ50 : [];
+  if (!wrap || !_quiz || !list.length) return;
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  if (_quiz.i >= _quiz.order.length) { wrap.innerHTML = quizResultHTML(); return; }
+  const q = list[_quiz.order[_quiz.i]];
+  const total = _quiz.order.length;
+  const pct = Math.round((_quiz.i / total) * 100);
+  const opts = q.opts.map((o, k) =>
+    `<button class="quiz-opt" data-k="${k}" onclick="quizAnswer(${k})">
+       <span class="qo-letter">${String.fromCharCode(65 + k)}</span>
+       <span class="qo-text">${qL(o)}</span>
+       <span class="qo-mark" aria-hidden="true"></span>
+     </button>`).join("");
+  wrap.innerHTML = `
+    <div class="dua-panel quiz-card" dir="${rtl ? "rtl" : "ltr"}">
+      <div class="quiz-top">
+        <span class="quiz-count">${localizedText("Question")} ${_quiz.i + 1} / ${total}</span>
+        <span class="quiz-score">${localizedText("Score")}: ${_quiz.score}</span>
+      </div>
+      <div class="quiz-bar"><i style="width:${pct}%"></i></div>
+      <div class="quiz-q">${qL(q.q)}</div>
+      <div class="quiz-opts">${opts}</div>
+      <button class="quiz-next" id="quizNext" onclick="quizNext()" disabled>${localizedText("Next")} <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+    </div>`;
+}
+function quizAnswer(k) {
+  const list = (typeof QUIZ50 !== "undefined") ? QUIZ50 : [];
+  if (!_quiz || _quiz.answered) return;
+  _quiz.answered = true;
+  const q = list[_quiz.order[_quiz.i]];
+  const correct = q.correct;
+  if (k === correct) _quiz.score++;
+  const btns = document.querySelectorAll(".quiz-opt");
+  btns.forEach((b) => {
+    const bk = Number(b.dataset.k);
+    b.classList.add("done");
+    if (bk === correct) b.classList.add("correct");
+    else if (bk === k) b.classList.add("wrong");
+  });
+  const scoreEl = document.querySelector(".quiz-score");
+  if (scoreEl) scoreEl.textContent = `${localizedText("Score")}: ${_quiz.score}`;
+  const next = el("#quizNext");
+  if (next) { next.disabled = false; next.classList.add("ready"); }
+}
+function quizNext() {
+  if (!_quiz || !_quiz.answered) return;
+  const card = document.querySelector(".quiz-card");
+  _quiz.i++;
+  _quiz.answered = false;
+  if (card) {
+    card.classList.add("leaving");
+    setTimeout(quizRender, 240);
+  } else quizRender();
+}
+function quizResultHTML() {
+  const total = _quiz.order.length;
+  const s = _quiz.score;
+  const pct = Math.round((s / total) * 100);
+  let msg = localizedText("Keep learning — try again!");
+  if (pct >= 90) msg = localizedText("Outstanding, mashaAllah!");
+  else if (pct >= 70) msg = localizedText("Great work, mashaAllah!");
+  else if (pct >= 50) msg = localizedText("Good effort — keep going!");
+  return `
+    <div class="dua-panel quiz-card quiz-result">
+      <div class="qr-ring" style="--p:${pct}">
+        <div class="qr-inner"><span class="qr-score">${s}</span><span class="qr-total">/ ${total}</span></div>
+      </div>
+      <div class="qr-msg">${msg}</div>
+      <button class="quiz-next ready" onclick="quizStart()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.7 3"/><path d="M3 3v5h5"/></svg> ${localizedText("Try Again")}</button>
+    </div>`;
+}
+function openQA() {
+  const body = el("#qaSheetBody");
+  if (body) { body.innerHTML = qaSheetShell(); quizStart(); }
+  el("#qaSheet")?.classList.add("open");
+  el("#qaBackdrop")?.classList.add("open");
+  document.body.classList.add("sheet-lock");
+  if (!(history.state && history.state.qaOpen)) {
+    history.pushState({ wilayat: true, route: State.route, index: _navIndex, qaOpen: true },
+      "", location.href);
+  }
+}
+function closeQA() {
+  el("#qaSheet")?.classList.remove("open");
+  el("#qaBackdrop")?.classList.remove("open");
+  if (!(el("#duaSheet")?.classList.contains("open"))) document.body.classList.remove("sheet-lock");
 }
 
 // ---------- HOME ----------
@@ -611,14 +980,933 @@ function renderHome(v) {
     ${progressRings(st)}
     ${duaDayCard()}
     ${qaBar()}
+    ${savedBar()}
     ${State.coords ? "" : `<div class="card" style="text-align:center;margin-bottom:18px">
       <span style="color:var(--text-2);font-size:13px">${t("enable_loc")}</span>
       <button class="btn" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button></div>`}`;
 }
+// ---------- TAFSIR (Shia Qur'an commentaries) ----------
+const TAFSIR_LIST = [
+  { id: "tf-qummi", name: "Tafsir al-Qummi", author: "Ali ibn Ibrahim al-Qummi" },
+  { id: "tf-ayyashi", name: "Tafsir al-'Ayyashi", author: "Muhammad ibn Mas'ud al-'Ayyashi" },
+  { id: "tf-furat", name: "Tafsir Furat al-Kufi", author: "Furat ibn Ibrahim al-Kufi" },
+  { id: "tf-askari", name: "Tafsir al-Imam al-'Askari (a.s.)", author: "attributed to Imam al-Hasan al-'Askari (a.s.)" },
+  { id: "tf-nur", name: "Nur al-Thaqalayn", author: "al-'Arusi al-Huwayzi" },
+];
+function tafsirBoxes(list) {
+  return list.map((t, i) => `
+    <button class="ev-box" onclick="openTafsir(${i})">
+      <span class="ev-num">${i + 1}</span>
+      <span class="ev-name">${localizedText(t.name)}</span>
+      <span class="ev-date">${localizedText(t.author)}</span>
+    </button>`).join("");
+}
+function renderTafsir(v) {
+  v.innerHTML = head("nav_tafsir")
+    + `<p class="ahlq-intro">${localizedText("The classical Qur'an commentaries (tafsir) of the school of the Ahl al-Bait.")}</p>`
+    + `<div class="jr-grid">${tafsirBoxes(TAFSIR_LIST)}</div>`;
+}
+const TAFSIR_V = "20260801-eshia164";
+const tafsirFileSrc = (id) => "js/tafsir_" + id.replace("tf-", "") + ".js?v=" + TAFSIR_V;
+function tafsirShell(t, inner) {
+  return `
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(t.name)}</span>
+      </div>
+      <div class="qr-body" dir="rtl">
+        <div class="ahlq-ref" style="text-align:center;margin-bottom:12px" dir="ltr">${localizedText(t.author)}</div>
+        ${inner}
+      </div>
+    </div>`;
+}
+const tafsirData = (id) => (typeof window.TAFSIR_DATA !== "undefined") ? window.TAFSIR_DATA[id] : null;
+function openTafsir(i) {
+  const t = TAFSIR_LIST[i]; if (!t) return;
+  if (tafsirData(t.id)) { showTafsirVolumes(i); return; }
+  // lazy-load this tafsir's data file, then show its volumes
+  openQuranReader(tafsirShell(t, `<div class="qr-load"><div class="card">${localizedText("Loading")}…</div></div>`));
+  const s = document.createElement("script");
+  s.src = tafsirFileSrc(t.id);
+  s.onload = () => showTafsirVolumes(i);
+  s.onerror = () => { const b = el("#qrSheetBody"); if (b) b.innerHTML = tafsirShell(t, `<p class="ev-intro" dir="ltr">${localizedText("This tafsir will be added soon, insha'Allah.")}</p>`); };
+  document.body.appendChild(s);
+}
+// One bar per volume; tapping opens that volume's paginated reader.
+let _tafOpenIdx = 0, _tafReading = false;
+function showTafsirVolumes(i) {
+  const t = TAFSIR_LIST[i]; if (!t) return;
+  const data = tafsirData(t.id);
+  const vols = (data && data.volumes) ? data.volumes : [];
+  _tafOpenIdx = i; _tafReading = false;
+  if (vols.length <= 1) { showTafsirPage(i, 0, 0); return; }   // single volume → straight in
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const bars = vols.map((v, vi) => `
+    <button class="option-bar" onclick="openTafsirVolume(${i},${vi})">
+      <span class="ob-ic">${QURAN_ICON}</span>
+      <span class="ob-text"><span class="ob-title">${localizedText("Volume")} ${locNum(vi + 1, State.lang)}</span><span class="ob-sub">${locNum(v.pages.length, State.lang)} ${localizedText("pages")}</span></span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`).join("");
+  openQuranReader(tafsirShell(t, `<div dir="${rtl ? "rtl" : "ltr"}">${bars}</div>`));
+  const b = el("#qrSheetBody"); if (b) b.scrollTop = 0;
+}
+function openTafsirVolume(i, vol) {
+  _tafReading = true; _tafOpenIdx = i;
+  // push a history entry so Back returns to the volume list (not out of the reader)
+  history.pushState({ wilayat: true, route: State.route, index: _navIndex, qrOpen: true, tafRead: 1 }, "", location.href);
+  showTafsirPage(i, vol, 0);
+}
+const tafsirTrFileSrc = (id, lang) => "js/tafsir_" + id.replace("tf-", "") + "_" + lang + ".js?v=" + TAFSIR_V;
+let _tafTrFail = {};
+// Render tafsir text: join scan line-breaks, tidy punctuation, and highlight the
+// Qur'anic verse quotes (in ornate brackets) and the "God said" verse markers.
+function tafClean(s) {
+  s = escapeHtml(String(s || "")).replace(/\r/g, "").replace(/\n+/g, " ");
+  // 0) Strip invisible zero-width noise from the scans that leaves letters looking
+  //    cramped — but only at word boundaries, so meaningful mid-word ZWNJ (Urdu/
+  //    Farsi) is preserved. Also soften robotic abbreviations to plain wording.
+  s = s.replace(/[​-‍⁠﻿]+(?=[\s.,،؛:!؟]|$)/g, "")
+       .replace(/(^|[\s.,،؛:!؟])[​-‍⁠﻿]+/g, "$1");
+  s = s.replace(/\bi\.\s*e\.\s*/gi, "that is, ").replace(/\be\.\s*g\.\s*/gi, "for example, ");
+  // 1) Pull structural bits into placeholders FIRST so the punctuation clean-up
+  //    below can never corrupt them. \x01 ref · \x02 quote · \x03 number · \x04 marker
+  s = s.replace(/\(?\s*(\d{1,3}):(\d{1,3})\s*\)?/g, " \x01$1:$2\x01 ");
+  s = s.replace(/[«“][ ]*([^»”]{2,400}?)[ ]*[»”]/g, "\x02$1\x02");
+  s = s.replace(/(?:^|\s)(\d{1,3})\s*-\s+/g, " \x03$1\x03 ");
+  s = s.replace(/\s*(قوله تعالى|قوله عزّ وجلّ|قوله عز وجل|قوله جل جلاله|قال الله تعالى|قال تعالى|وقوله)\s*/g,
+                " \x04$1\x04 ");
+  // 2) Drop stray OCR/transliteration junk: lone Latin letters (keep only real
+  //    words a/A/I/O) and orphan "C-G"-type hyphen tokens. Twice for back-to-back.
+  for (let k = 0; k < 2; k++) {
+    s = s.replace(/(^|\s)[B-HJ-NP-Zb-z][.,;:]?(?=\s|$)/g, "$1")
+         .replace(/(^|\s)[A-Za-z]-[A-Za-z][.,;:]?(?=\s|$)/g, "$1");
+  }
+  // 3) Punctuation clean-up (leftover after removals)
+  s = s.replace(/\s+[-–—]+\s*/g, " ").replace(/\s*[-–—]+\s+/g, " ")   // OCR dashes → space (keep al-Baqarah)
+       .replace(/&quot;|&#39;|['"“”„‟]/g, "")                          // orphan stray quotes
+       .replace(/\s+([.,،؛:!؟])/g, "$1")                              // no space before punctuation
+       .replace(/[,،]+(?=\s*[.،؛:!؟])/g, "")                          // comma right before another mark → drop
+       .replace(/([.،؛:!؟])[\s.,،؛:]*([.،؛:!؟])/g, "$1$2")            // collapse mixed runs
+       .replace(/([.،؛:!؟])\1+/g, "$1")                              // dedupe repeats
+       .replace(/(^|[\x01\x02\x03\x04])\s*[.,،؛:!؟]+\s*/g, "$1 ")     // orphan punctuation at a block start
+       .replace(/\s{2,}/g, " ").trim();
+  // 4) Materialise the placeholders into HTML
+  s = s.replace(/\x01(\d{1,3}:\d{1,3})\x01/g, '<br><br><span class="taf-ref">$1</span> ')
+       .replace(/\x02([^\x02]*)\x02/g, '<span class="taf-verse">« $1 »</span>')
+       .replace(/\x03(\d{1,3})\x03/g, '<br><br><span class="taf-num">$1 -</span> ')
+       .replace(/\x04([^\x04]*)\x04/g, '<br><br><span class="taf-marker">$1</span> ');
+  return s.replace(/^(?:<br>\s*)+/, "").replace(/\s{2,}/g, " ").trim();
+}
+// Localize Western digits (0-9) to the reading language's numeral system:
+// Arabic → ٠-٩, Urdu/Kashmiri/Farsi/Dari → ۰-۹, Latin languages unchanged.
+const _NUMSET = { ar: "٠١٢٣٤٥٦٧٨٩", ur: "۰۱۲۳۴۵۶۷۸۹", ks: "۰۱۲۳۴۵۶۷۸۹", fa: "۰۱۲۳۴۵۶۷۸۹" };
+function locNum(s, lang) {
+  const set = _NUMSET[lang];
+  return set ? String(s).replace(/[0-9]/g, (d) => set[+d]) : String(s);
+}
+function showTafsirPage(i, vol, page) {
+  const t = TAFSIR_LIST[i]; if (!t) return;
+  const data = tafsirData(t.id);
+  const vols = (data && data.volumes) ? data.volumes : [];
+  const v = vols[vol]; if (!v) return;
+  const pages = v.pages || [];
+  const n = pages.length;
+  if (!n) return;
+  page = Math.max(0, Math.min(page, n - 1));
+  const multiVol = vols.length > 1;
+  const arHtml = `<div class="taf-page" dir="rtl">${locNum(tafClean(pages[page]), "ar")}</div>`;
+
+  // Tafsir has its own real Kashmiri translation (Bing), so ks → "ks" here even
+  // though the rest of the app maps Kashmiri to the Urdu text.
+  const trLang = State.lang === "ks" ? "ks" : trField();
+  const needTr = trLang && trLang !== "ar";
+  const failKey = t.id + "|" + trLang;
+  const trBook = (window.TAFSIR_TR && window.TAFSIR_TR[t.id]) ? window.TAFSIR_TR[t.id][trLang] : null;
+  const trVol = (trBook && trBook[vol]) ? trBook[vol] : null;
+  let trHtml = "";
+  if (needTr && trVol) {
+    const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+    trHtml = `<div class="taf-tr" dir="${rtl ? "rtl" : "ltr"}">${locNum(tafClean(trVol[page] || ""), State.lang)}</div>`;
+  } else if (needTr && !_tafTrFail[failKey]) {
+    trHtml = `<div class="taf-tr taf-tr-load" dir="ltr">${localizedText("Loading")}…</div>`;
+    if (window._tafTrLoading !== failKey) {
+      window._tafTrLoading = failKey;
+      const s = document.createElement("script");
+      s.src = tafsirTrFileSrc(t.id, trLang);
+      s.onload = () => { window._tafTrLoading = null; showTafsirPage(i, vol, page); };
+      s.onerror = () => { window._tafTrLoading = null; _tafTrFail[failKey] = 1; showTafsirPage(i, vol, page); };
+      document.body.appendChild(s);
+    }
+  }
+  const inner = `
+        ${arHtml}
+        ${trHtml}
+        <div class="taf-pager" dir="ltr">
+          <button class="btn taf-nav" ${page <= 0 ? "disabled" : ""} onclick="showTafsirPage(${i},${vol},${page - 1})">‹ ${localizedText("Previous")}</button>
+          <span class="taf-count">${locNum(page + 1, State.lang)} / ${locNum(n, State.lang)}</span>
+          <button class="btn taf-nav" ${page >= n - 1 ? "disabled" : ""} onclick="showTafsirPage(${i},${vol},${page + 1})">${localizedText("Next")} ›</button>
+        </div>`;
+  openQuranReader(tafsirShell(t, inner));
+  const b = el("#qrSheetBody"); if (b) b.scrollTop = 0;
+}
+
+// ---------- HADITH LIBRARY (major full-text collections, from eshia) ----------
+const HLIB_LIST = [
+  { slug: "istibsar",  name: "al-Istibsar",         author: "Shaykh al-Tusi" },
+  { slug: "tahdhib",   name: "Tahdhib al-Ahkam",    author: "Shaykh al-Tusi" },
+  { slug: "mizan",     name: "Mizan al-Hikmah",     author: "Muhammad al-Rayshahri" },
+  { slug: "mustadrak", name: "Mustadrak al-Wasail", author: "al-Muhaddith al-Nuri" },
+  { slug: "wasail",    name: "Wasail al-Shia",      author: "al-Hurr al-'Amili" },
+  { slug: "bihar",     name: "Bihar al-Anwar",      author: "al-'Allamah al-Majlisi" },
+];
+// Approx. narration counts (scholarly) for the big collections — used in the stats.
+const HLIB_NARR = { istibsar: 5511, tahdhib: 13590, mizan: 23000, mustadrak: 23514, wasail: 35850, bihar: 40000 };
+const hlibNarrTotal = () => HLIB_LIST.reduce((a, t) => a + (HLIB_NARR[t.slug] || 0), 0);
+// Per-volume lazy loading: a tiny manifest (volume page-counts), then one small
+// file per volume (Arabic) and per volume+language (translation) on demand — so
+// giant books like Bihar (42k pages) never load all at once.
+const HLIB_V = "20260805-hlib5";
+const hlibManifestSrc = (slug) => "js/hadithlib_" + slug + ".js?v=" + HLIB_V;
+const hlibVolSrc = (slug, vol) => "js/hadithlib_" + slug + "_v" + vol + ".js?v=" + HLIB_V;
+const hlibTrVolSrc = (slug, lang, vol) => "js/hadithlib_" + slug + "_" + lang + "_v" + vol + ".js?v=" + HLIB_V;
+const hlibMeta = (slug) => (window.HLIB_META && window.HLIB_META[slug]) ? window.HLIB_META[slug] : null;
+const hlibVolPages = (slug, vol) => (window.HLIB_DATA && window.HLIB_DATA[slug] && window.HLIB_DATA[slug][vol]) ? window.HLIB_DATA[slug][vol] : null;
+let _hlibTrFail = {}, _hlibReading = false, _hlibOpenIdx = 0;
+// Rendered as bars (like the other hadith books), shown below the graph.
+function hlibBars() {
+  const arName = { istibsar: "الاستبصار", tahdhib: "تهذيب الأحكام", mizan: "ميزان الحكمة", mustadrak: "مستدرك الوسائل", wasail: "وسائل الشيعة", bihar: "بحار الأنوار" };
+  return HLIB_LIST.map((t, i) => {
+    const title = disp(t.name, arName[t.slug] || t.name, t.name);
+    return `<button class="ev-box" onclick="openHlib(${i})">
+      <span class="ev-ic">${BOOK_ICON}</span>
+      <span class="ev-name">${title}</span>
+      <span class="ev-date">${localizedText(t.author)}</span>
+    </button>`;
+  }).join("");
+}
+function openHlib(i) {
+  const t = HLIB_LIST[i]; if (!t) return;
+  if (hlibMeta(t.slug)) { showHlibVolumes(i); return; }
+  openQuranReader(tafsirShell(t, `<div class="qr-load"><div class="card">${localizedText("Loading")}…</div></div>`));
+  const s = document.createElement("script");
+  s.src = hlibManifestSrc(t.slug);
+  s.onload = () => showHlibVolumes(i);
+  s.onerror = () => { const b = el("#qrSheetBody"); if (b) b.innerHTML = tafsirShell(t, `<p class="ev-intro" dir="ltr">${localizedText("This book will be added soon, insha'Allah.")}</p>`); };
+  document.body.appendChild(s);
+}
+function showHlibVolumes(i) {
+  const t = HLIB_LIST[i]; if (!t) return;
+  const meta = hlibMeta(t.slug);
+  const vols = (meta && meta.vols) ? meta.vols : [];
+  _hlibOpenIdx = i; _hlibReading = false;
+  if (vols.length <= 1) { openHlibVolume(i, 0); return; }   // single volume → straight in
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const bars = vols.map((cnt, vi) => `
+    <button class="option-bar" onclick="openHlibVolume(${i},${vi})">
+      <span class="ob-ic">${QURAN_ICON}</span>
+      <span class="ob-text"><span class="ob-title">${localizedText("Volume")} ${locNum(vi + 1, State.lang)}</span><span class="ob-sub">${locNum(cnt, State.lang)} ${localizedText("pages")}</span></span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`).join("");
+  openQuranReader(tafsirShell(t, `<div dir="${rtl ? "rtl" : "ltr"}">${bars}</div>`));
+  const b = el("#qrSheetBody"); if (b) b.scrollTop = 0;
+}
+function openHlibVolume(i, vol) {
+  const t = HLIB_LIST[i]; if (!t) return;
+  const meta = hlibMeta(t.slug);
+  const multiVol = meta && meta.vols && meta.vols.length > 1;
+  if (multiVol) {
+    _hlibReading = true; _hlibOpenIdx = i;
+    history.pushState({ wilayat: true, route: State.route, index: _navIndex, qrOpen: true, tafRead: 1 }, "", location.href);
+  }
+  if (hlibVolPages(t.slug, vol)) { showHlibPage(i, vol, 0); return; }
+  openQuranReader(tafsirShell(t, `<div class="qr-load"><div class="card">${localizedText("Loading")}…</div></div>`));
+  const s = document.createElement("script");
+  s.src = hlibVolSrc(t.slug, vol);
+  s.onload = () => showHlibPage(i, vol, 0);
+  s.onerror = () => { const b = el("#qrSheetBody"); if (b) b.innerHTML = tafsirShell(t, `<p class="ev-intro" dir="ltr">${localizedText("This book will be added soon, insha'Allah.")}</p>`); };
+  document.body.appendChild(s);
+}
+function showHlibPage(i, vol, page) {
+  const t = HLIB_LIST[i]; if (!t) return;
+  const meta = hlibMeta(t.slug);
+  const vcount = (meta && meta.vols) ? meta.vols.length : 1;
+  const pages = hlibVolPages(t.slug, vol); if (!pages) return;
+  const n = pages.length; if (!n) return;
+  page = Math.max(0, Math.min(page, n - 1));
+  const multiVol = vcount > 1;
+  const arHtml = `<div class="taf-page" dir="rtl">${locNum(tafClean(pages[page]), "ar")}</div>`;
+  const trLang = State.lang === "ks" ? "ks" : trField();
+  const needTr = trLang && trLang !== "ar";
+  const failKey = t.slug + "|" + trLang + "|" + vol;
+  const trVol = (window.HLIB_TR && window.HLIB_TR[t.slug] && window.HLIB_TR[t.slug][trLang]) ? window.HLIB_TR[t.slug][trLang][vol] : null;
+  let trHtml = "";
+  if (needTr && trVol) {
+    const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+    trHtml = `<div class="taf-tr" dir="${rtl ? "rtl" : "ltr"}">${locNum(tafClean(trVol[page] || ""), State.lang)}</div>`;
+  } else if (needTr && !_hlibTrFail[failKey]) {
+    trHtml = `<div class="taf-tr taf-tr-load" dir="ltr">${localizedText("Loading")}…</div>`;
+    if (window._hlibTrLoading !== failKey) {
+      window._hlibTrLoading = failKey;
+      const s = document.createElement("script");
+      s.src = hlibTrVolSrc(t.slug, trLang, vol);
+      s.onload = () => { window._hlibTrLoading = null; showHlibPage(i, vol, page); };
+      s.onerror = () => { window._hlibTrLoading = null; _hlibTrFail[failKey] = 1; showHlibPage(i, vol, page); };
+      document.body.appendChild(s);
+    }
+  }
+  const inner = `
+        ${arHtml}
+        ${trHtml}
+        <div class="taf-pager" dir="ltr">
+          <button class="btn taf-nav" ${page <= 0 ? "disabled" : ""} onclick="showHlibPage(${i},${vol},${page - 1})">‹ ${localizedText("Previous")}</button>
+          <span class="taf-count">${locNum(page + 1, State.lang)} / ${locNum(n, State.lang)}</span>
+          <button class="btn taf-nav" ${page >= n - 1 ? "disabled" : ""} onclick="showHlibPage(${i},${vol},${page + 1})">${localizedText("Next")} ›</button>
+        </div>`;
+  openQuranReader(tafsirShell(t, inner));
+  const b = el("#qrSheetBody"); if (b) b.scrollTop = 0;
+}
+
+// ---------- LIFE (the Muslim's life — Qur'an, hadith & explanation) ----------
+const LIFE_CATS = [
+  { cat: "Faith & the Heart", items: [
+    { id: "life-ikhlas", title: "Sincerity (Ikhlas) & Intention (Niyyah)" },
+    { id: "life-tawakkul", title: "Reliance on God (Tawakkul)" },
+    { id: "life-tawbah", title: "Repentance (Tawbah) & Returning to God" },
+    { id: "life-sabr", title: "Patience (Sabr) & Gratitude (Shukr)" },
+    { id: "life-khawf", title: "Fear & Hope (Khawf wa Raja)" },
+    { id: "life-heart", title: "Purifying the Heart from Its Diseases" },
+  ]},
+  { cat: "The Major Sins & How to Protect Yourself", items: [
+    { id: "life-shirk", title: "Shirk — Associating Partners with God" },
+    { id: "life-salah-neglect", title: "Neglecting the Prayer" },
+    { id: "life-riba", title: "Riba — Usury & Interest" },
+    { id: "life-ghibah", title: "Backbiting (Ghibah) & Guarding the Tongue" },
+    { id: "life-lying", title: "Lying & Breaking Trust" },
+    { id: "life-zina", title: "Unlawful Relations (Zina) & Lowering the Gaze" },
+    { id: "life-alcohol", title: "Alcohol, Drugs & Intoxicants" },
+    { id: "life-kibr", title: "Pride, Envy & Showing Off (Riya)" },
+    { id: "life-anger", title: "Anger & How to Control It" },
+  ]},
+  { cat: "Worship & Daily Practice", items: [
+    { id: "life-salah", title: "The Five Daily Prayers" },
+    { id: "life-fasting", title: "Fasting & Ramadan" },
+    { id: "life-zakat", title: "Zakat, Khums & Charity" },
+    { id: "life-dhikr", title: "Remembrance of God (Dhikr)" },
+    { id: "life-dua", title: "The Etiquette of Supplication (Dua)" },
+    { id: "life-quran", title: "Living by the Qur'an" },
+  ]},
+  { cat: "Family & Relationships", items: [
+    { id: "life-parents", title: "The Rights of Parents" },
+    { id: "life-marriage", title: "Marriage & Choosing a Spouse" },
+    { id: "life-spouse", title: "The Rights of Husband & Wife" },
+    { id: "life-children", title: "Raising Righteous Children" },
+    { id: "life-rahm", title: "Kinship Ties (Silat al-Rahm)" },
+    { id: "life-neighbours", title: "The Rights of Neighbours" },
+  ]},
+  { cat: "Character & Dealings", items: [
+    { id: "life-honesty", title: "Honesty & Trustworthiness" },
+    { id: "life-justice", title: "Justice & Fairness" },
+    { id: "life-manners", title: "Humility & Good Manners (Akhlaq)" },
+    { id: "life-haya", title: "Modesty (Haya) & Dress" },
+    { id: "life-forgiveness", title: "Forgiveness & Pardoning" },
+    { id: "life-halal", title: "Halal Earning & Avoiding the Haram" },
+  ]},
+  { cat: "Life Moments & Transitions", items: [
+    { id: "life-birth", title: "Birth & the Newborn (Adhan, Aqiqah, Naming)" },
+    { id: "life-youth", title: "Youth, Coming of Age & Responsibility" },
+    { id: "life-wedding", title: "The Wedding & Building a Home" },
+    { id: "life-trials", title: "Hardship, Illness & Trials" },
+    { id: "life-death", title: "Death, the Grave & the Hereafter" },
+    { id: "life-etiquette", title: "Daily Etiquette (Eating, Sleeping, Travel, Home)" },
+  ]},
+];
+function lifeBar(ci, ii, x) {
+  return `
+    <button class="option-bar" onclick="openLife(${ci},${ii})">
+      <span class="ob-ic">${QURAN_ICON}</span>
+      <span class="ob-text"><span class="ob-title">${localizedText(x.title)}</span></span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`;
+}
+function renderLife(v) {
+  const body = LIFE_CATS.map((c, ci) => `
+    <div class="proof-relig"><span class="proof-sym">◆</span> ${localizedText(c.cat)}</div>
+    ${c.items.map((x, ii) => lifeBar(ci, ii, x)).join("")}`).join("");
+  v.innerHTML = head("nav_life")
+    + `<p class="ahlq-intro">${localizedText("A guide for every part of a Muslim's life — faith and the heart, the sins to avoid and how to protect yourself, worship, family, character, and the great moments of life.")}</p>`
+    + body;
+}
+function openLife(ci, ii) {
+  const c = LIFE_CATS[ci]; if (!c) return;
+  const x = c.items[ii]; if (!x) return;
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const data = (typeof LIFE_DATA !== "undefined" && x.id) ? LIFE_DATA[x.id] : null;
+  const quran = (data && Array.isArray(data.quran)) ? data.quran : [];
+  const hadith = data ? evList(data.hadith) : [];
+  const exp = data ? evList(data.exp) : [];
+  const quranHtml = quran.length ? `
+        <div class="ev-sec-title">${localizedText("Quranic proofs")}</div>
+        ${quran.map((q) => {
+          const mm = [...String(q.tr && q.tr.en || "").matchAll(/(\d+):(\d+)(?:-(\d+))?/g)];
+          const key = mm.length ? mm[mm.length - 1][0] : "";
+          const playBtn = (q.ar && key) ? `<button class="qverse-play" onclick="reciteVerse('${key}', this)" aria-label="${localizedText("Recite")}"><span class="qv-play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span class="qv-stop"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></span></button>` : "";
+          return `<div class="proof-verse">
+          ${playBtn}
+          ${q.ar ? `<div class="ahlq-verse ahlq-verse-sm" dir="rtl" lang="ar">${q.ar}</div>` : ""}
+          <div class="proof-ref">${(q.tr && (q.tr[trField() || "en"] || q.tr.en)) || ""}</div>
+        </div>`;
+        }).join("")}` : "";
+  const hadithHtml = hadith.length ? `
+        <div class="ev-sec-title">${localizedText("Hadith proofs")}</div>
+        ${hadith.map((s) => `<div class="proof-ref">${s}</div>`).join("")}` : "";
+  const expHtml = exp.length ? `
+        <div class="ev-sec-title">${localizedText("Explanation")}</div>
+        <div class="ahlq-content">${exp.map((s) => `<p>${s}</p>`).join("")}</div>` : "";
+  openQuranReader(`
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(x.title)}</span>
+      </div>
+      <div class="qr-body" dir="${rtl ? "rtl" : "ltr"}">
+        ${quranHtml}
+        ${hadithHtml}
+        ${expHtml}
+        <div class="ahlq-sign">${localizedText("Explanation by")} <strong>Al-Wilayat</strong></div>
+      </div>
+    </div>`);
+}
+
+// ---------- SCIENCE (scientific signs in Qur'an & the Imams' hadith) ----------
+// Data lives in web/js/science.js (var SCIENCE_DATA). Bars grouped by theme.
+const SCIENCE_CATS = [
+  { cat: "The Universe & the Cosmos", items: [
+    { id: "sci-bigbang", title: "The Big Bang — the parting of the heavens & earth" },
+    { id: "sci-expanding", title: "The Expanding Universe" },
+    { id: "sci-multiverse", title: "The Multiverse — a thousand thousand worlds" },
+    { id: "sci-orbits", title: "Celestial Orbits & the Moving Sun" },
+    { id: "sci-iron", title: "Iron Sent Down from the Sky" },
+    { id: "sci-sevenheavens", title: "The Seven Heavens in Layers" },
+    { id: "sci-moonlight", title: "The Sun's Light & the Moon's Reflected Light" },
+    { id: "sci-smoke", title: "The Heaven Was Smoke (Gas & Dust)" },
+    { id: "sci-blackholes", title: "The Hidden, Sweeping Stars (Black Holes)" },
+  ]},
+  { cat: "Life & the Human Being", items: [
+    { id: "sci-water", title: "The Origin of Life from Water" },
+    { id: "sci-embryo", title: "The Stages of the Human Embryo" },
+    { id: "sci-fingerprints", title: "Fingerprints" },
+    { id: "sci-pain", title: "Pain Receptors in the Skin" },
+    { id: "sci-pairs", title: "Everything Created in Pairs" },
+    { id: "sci-gender", title: "The Child's Sex from the Male's Drop" },
+    { id: "sci-milk", title: "How Milk Is Formed (Between Blood & Food)" },
+    { id: "sci-honey", title: "Honey as a Healing" },
+    { id: "sci-bee", title: "The Worker Bees Are Female" },
+  ]},
+  { cat: "The Earth, Seas & Mountains", items: [
+    { id: "sci-mountains", title: "Mountains as Pegs" },
+    { id: "sci-seas", title: "The Barrier Between the Two Seas" },
+    { id: "sci-sky", title: "The Sky as a Protected Roof" },
+    { id: "sci-round", title: "The Round Earth & the Wrapping of Night & Day" },
+    { id: "sci-winds", title: "The Fertilising Winds" },
+    { id: "sci-lowestland", title: "The Lowest Land on Earth" },
+  ]},
+  { cat: "Matter, Atoms & Time", items: [
+    { id: "sci-atom", title: "The Atom & What Is Smaller" },
+    { id: "sci-time", title: "The Relativity of Time" },
+    { id: "sci-glorify", title: "All Things Vibrate in Glorification" },
+  ]},
+  { cat: "Quantum Physics & the Unseen", items: [
+    { id: "sci-ghayb", title: "The Unseen Reality (al-Ghayb)" },
+    { id: "sci-waveparticle", title: "Wave–Particle Duality" },
+    { id: "sci-entanglement", title: "Quantum Entanglement — Action at a Distance" },
+    { id: "sci-observer", title: "The Observer & the Ever-Witnessing (al-Shahid)" },
+  ]},
+];
+function scienceBar(ci, ii, s) {
+  return `
+    <button class="option-bar" onclick="openScience(${ci},${ii})">
+      <span class="ob-ic">${QURAN_ICON}</span>
+      <span class="ob-text"><span class="ob-title">${localizedText(s.title)}</span></span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`;
+}
+function renderScience(v) {
+  const body = SCIENCE_CATS.map((c, ci) => `
+    <div class="proof-relig"><span class="proof-sym">◆</span> ${localizedText(c.cat)}</div>
+    ${c.items.map((s, ii) => scienceBar(ci, ii, s)).join("")}`).join("");
+  v.innerHTML = head("nav_science")
+    + `<p class="ahlq-intro">${localizedText("The truths of modern science foretold in the Qur'an and the teachings of the Imams of the Ahl al-Bait, centuries before their discovery.")}</p>`
+    + body;
+}
+function openScience(ci, ii) {
+  const c = SCIENCE_CATS[ci]; if (!c) return;
+  const s = c.items[ii]; if (!s) return;
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const data = (typeof SCIENCE_DATA !== "undefined" && s.id) ? SCIENCE_DATA[s.id] : null;
+  const refs = data ? evList(data.refs) : [];
+  const context = data ? evList(data.context) : [];
+  const refsHtml = refs.length ? `
+        <div class="ev-sec-title">${localizedText("Verse & narrations")}</div>
+        ${refs.map((x) => `<div class="proof-ref">${x}</div>`).join("")}` : "";
+  const ctxHtml = context.length ? `
+        <div class="ev-sec-title">${localizedText("The science & explanation")}</div>
+        <div class="ahlq-content">${context.map((x) => `<p>${x}</p>`).join("")}</div>` : "";
+  // recitation audio for the main Qur'anic verse (surah:ayah taken from aref)
+  const km = (data && data.aref) ? String(data.aref).match(/(\d+):(\d+)/) : null;
+  const key = km ? km[0] : "";
+  const playBtn = (data && data.arabic && key) ? `<button class="qverse-play" onclick="reciteVerse('${key}', this)" aria-label="${localizedText("Recite")}"><span class="qv-play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span class="qv-stop"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></span></button>` : "";
+  openQuranReader(`
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(s.title)}</span>
+      </div>
+      <div class="qr-body" dir="${rtl ? "rtl" : "ltr"}">
+        ${data ? `<div class="proof-verse">
+          ${playBtn}
+          <div class="ahlq-verse ahlq-verse-sm" dir="rtl" lang="ar">${data.arabic}</div>
+          <div class="proof-ref" style="text-align:center">${data.aref}</div>
+        </div>` : ""}
+        ${refsHtml}
+        ${ctxHtml}
+        <div class="ahlq-sign">${localizedText("Explanation by")} <strong>Al-Wilayat</strong></div>
+      </div>
+    </div>`);
+}
+
+// ---------- HOLY BOOKS (previously revealed heavenly scriptures, KJV) ----------
+// Box → book bars → chapter reader (English base + your-language translation).
+const HOLYBOOKS_LIST = [
+  { id: "hb-tawrat", name: "Tawrat (Torah)", desc: "The five books of Moses", books: ["genesis", "exodus", "leviticus", "numbers", "deuteronomy"] },
+  { id: "hb-zabur",  name: "Zabur (Psalms)", desc: "The Psalms of Prophet Dawud (a.s.)", books: ["psalms"] },
+  { id: "hb-injil",  name: "Injil (Gospel)", desc: "The four Gospels", books: ["matthew", "mark", "luke", "john"] },
+  { id: "hb-ot",     name: "Old Testament",  desc: "The Hebrew Bible — 39 books", filter: "ot" },
+  { id: "hb-nt",     name: "New Testament",  desc: "The Christian scriptures — 27 books", filter: "nt" },
+];
+const HOLY_V = "20260803-holy2";
+const holyManifestSrc = () => "js/holy_manifest.js?v=" + HOLY_V;
+const holyBookSrc = (slug) => "js/holy_" + slug + ".js?v=" + HOLY_V;
+const holyTrSrc = (slug, lang) => "js/holy_" + slug + "_" + lang + ".js?v=" + HOLY_V;
+// Holy Books' base text is English; every other language shows a translation.
+const holyTrLang = () => ({ en: null, sg: null, ar: "ar", ur: "ur", ks: "ks", fa: "fa", az: "az", ms: "ms" }[State.lang] ?? null);
+let _holyTrFail = {}, _holyReading = false, _holyOpenIdx = 0;
+
+function holyBoxes(list) {
+  return list.map((t, i) => `
+    <button class="ev-box" onclick="openHolyBook(${i})">
+      <span class="ev-num">${i + 1}</span>
+      <span class="ev-name">${localizedText(t.name)}</span>
+      <span class="ev-date">${localizedText(t.desc)}</span>
+    </button>`).join("");
+}
+function renderHolyBooks(v) {
+  v.innerHTML = head("nav_holy")
+    + `<p class="ahlq-intro">${localizedText("The previously revealed heavenly scriptures — for study and comparison.")}</p>`
+    + `<div class="jr-grid">${holyBoxes(HOLYBOOKS_LIST)}</div>`;
+}
+function holyShell(box, inner) {
+  return `
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(box.name)}</span>
+      </div>
+      <div class="qr-body">${inner}</div>
+    </div>`;
+}
+function holyBoxList(i) {
+  const box = HOLYBOOKS_LIST[i]; const all = window.HB_BOOKS || [];
+  if (box.filter) return all.filter((b) => b.t === box.filter);
+  return (box.books || []).map((s) => all.find((b) => b.slug === s)).filter(Boolean);
+}
+function openHolyBook(i) {
+  const box = HOLYBOOKS_LIST[i]; if (!box) return;
+  if (window.HB_BOOKS) { showHolyBooks(i); return; }
+  openQuranReader(holyShell(box, `<div class="qr-load"><div class="card">${localizedText("Loading")}…</div></div>`));
+  const s = document.createElement("script");
+  s.src = holyManifestSrc();
+  s.onload = () => showHolyBooks(i);
+  s.onerror = () => { const b = el("#qrSheetBody"); if (b) b.innerHTML = holyShell(box, `<p class="ev-intro" dir="ltr">${localizedText("This will be added soon, insha'Allah.")}</p>`); };
+  document.body.appendChild(s);
+}
+function showHolyBooks(i) {
+  const box = HOLYBOOKS_LIST[i]; if (!box) return;
+  _holyOpenIdx = i; _holyReading = false;
+  const bars = holyBoxList(i).map((b) => `
+    <button class="option-bar" onclick="openHolyReader('${b.slug}',${i})">
+      <span class="ob-ic">${QURAN_ICON}</span>
+      <span class="ob-text"><span class="ob-title">${b.name}</span><span class="ob-sub">${locNum(b.ch, State.lang)} ${localizedText("chapters")}</span></span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`).join("");
+  openQuranReader(holyShell(box, `<div>${bars}</div>`));
+  const b = el("#qrSheetBody"); if (b) b.scrollTop = 0;
+}
+function openHolyReader(slug, boxIdx) {
+  _holyReading = true; _holyOpenIdx = boxIdx;
+  history.pushState({ wilayat: true, route: State.route, index: _navIndex, qrOpen: true, tafRead: 1 }, "", location.href);
+  if (window.HB_DATA && window.HB_DATA[slug]) { showHolyPage(slug, 0); return; }
+  const box = HOLYBOOKS_LIST[boxIdx];
+  openQuranReader(holyShell(box, `<div class="qr-load"><div class="card">${localizedText("Loading")}…</div></div>`));
+  const s = document.createElement("script");
+  s.src = holyBookSrc(slug);
+  s.onload = () => showHolyPage(slug, 0);
+  s.onerror = () => { const b = el("#qrSheetBody"); if (b) b.innerHTML = holyShell(box, `<p class="ev-intro" dir="ltr">${localizedText("This will be added soon, insha'Allah.")}</p>`); };
+  document.body.appendChild(s);
+}
+function holyClean(s) {
+  s = escapeHtml(String(s || ""));
+  s = s.replace(/(^|\n)(\d+)\.\s*/g, '$1<span class="taf-num">$2</span> ');
+  return s.replace(/\n/g, "<br>");
+}
+function showHolyPage(slug, page) {
+  const bk = (window.HB_BOOKS || []).find((b) => b.slug === slug); if (!bk) return;
+  const box = HOLYBOOKS_LIST[_holyOpenIdx] || HOLYBOOKS_LIST[0];
+  const pages = (window.HB_DATA || {})[slug] || [];
+  const n = pages.length; if (!n) return;
+  page = Math.max(0, Math.min(page, n - 1));
+  const enHtml = `<div class="taf-page" dir="ltr" style="text-align:left;font-family:inherit;font-size:16px">${holyClean(pages[page])}</div>`;
+
+  const trLang = holyTrLang();
+  const needTr = !!trLang;
+  const failKey = slug + "|" + trLang;
+  const trVol = (window.HB_TR && window.HB_TR[slug] && window.HB_TR[slug][trLang]) ? window.HB_TR[slug][trLang] : null;
+  let trHtml = "";
+  if (needTr && trVol) {
+    const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+    trHtml = `<div class="taf-tr" dir="${rtl ? "rtl" : "ltr"}">${locNum(holyClean(trVol[page] || ""), State.lang)}</div>`;
+  } else if (needTr && !_holyTrFail[failKey]) {
+    trHtml = `<div class="taf-tr taf-tr-load" dir="ltr">${localizedText("Loading")}…</div>`;
+    if (window._holyTrLoading !== failKey) {
+      window._holyTrLoading = failKey;
+      const s = document.createElement("script");
+      s.src = holyTrSrc(slug, trLang);
+      s.onload = () => { window._holyTrLoading = null; showHolyPage(slug, page); };
+      s.onerror = () => { window._holyTrLoading = null; _holyTrFail[failKey] = 1; showHolyPage(slug, page); };
+      document.body.appendChild(s);
+    }
+  }
+  const inner = `
+        <div class="ev-sec-title" style="text-align:center;margin-bottom:12px">${bk.name} · ${localizedText("Chapter")} ${locNum(page + 1, State.lang)}</div>
+        ${enHtml}
+        ${trHtml}
+        <div class="taf-pager" dir="ltr">
+          <button class="btn taf-nav" ${page <= 0 ? "disabled" : ""} onclick="showHolyPage('${slug}',${page - 1})">‹ ${localizedText("Previous")}</button>
+          <span class="taf-count">${locNum(page + 1, State.lang)} / ${locNum(n, State.lang)}</span>
+          <button class="btn taf-nav" ${page >= n - 1 ? "disabled" : ""} onclick="showHolyPage('${slug}',${page + 1})">${localizedText("Next")} ›</button>
+        </div>`;
+  openQuranReader(holyShell(box, inner));
+  const b = el("#qrSheetBody"); if (b) b.scrollTop = 0;
+}
+
+// ---------- PROOFS (signs in other religions' scriptures) ----------
+// Religion headings, each with proof bars. Bar content (the scriptural proof +
+// explanation, in 7 languages) is filled on command.
+// Religion symbols as SVG so all render at one identical size (glyph fonts don't).
+const SYM_STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><polygon points="12 3 3.5 18 20.5 18"/><polygon points="12 21 3.5 6 20.5 6"/></svg>';
+const SYM_CROSS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="2" x2="12" y2="22"/><line x1="6" y1="8" x2="18" y2="8"/></svg>';
+const SYM_WHEEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.2"/><line x1="14.2" y1="12" x2="21" y2="12"/><line x1="13.56" y1="13.56" x2="18.36" y2="18.36"/><line x1="12" y1="14.2" x2="12" y2="21"/><line x1="10.44" y1="13.56" x2="5.64" y2="18.36"/><line x1="9.8" y1="12" x2="3" y2="12"/><line x1="10.44" y1="10.44" x2="5.64" y2="5.64"/><line x1="12" y1="9.8" x2="12" y2="3"/><line x1="13.56" y1="10.44" x2="18.36" y2="5.64"/></svg>';
+const SYM_OM = '<svg viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="18.5" text-anchor="middle" font-size="21" font-family="\'Noto Sans Devanagari\',sans-serif" fill="currentColor">ॐ</text></svg>';
+
+const PROOF_RELIGIONS = [
+  { religion: "Judaism", symbol: SYM_STAR, items: [
+    { id: "jud-muhammad", title: "The coming of Prophet Muhammad ﷺ" },
+    { id: "jud-twelve", title: "The twelve great leaders (from the line of Ishmael)" },
+    { id: "jud-karbala", title: "Karbala and the sacrifice of Imam al-Husayn (a.s.)" },
+    { id: "jud-palestine", title: "The land of Palestine" },
+  ]},
+  { religion: "Christianity", symbol: SYM_CROSS, items: [
+    { id: "chr-muhammad", title: "The coming of Prophet Muhammad ﷺ (the Paraclete / Ahmad)" },
+    { id: "chr-twelve", title: "The twelve leaders after the Prophet" },
+    { id: "chr-karbala", title: "Karbala and the sacrifice of Imam al-Husayn (a.s.)" },
+    { id: "chr-palestine", title: "The land of Palestine" },
+  ]},
+  { religion: "Hinduism", symbol: SYM_OM, items: [
+    { id: "hin-muhammad", title: "The coming of Prophet Muhammad ﷺ (Bhavishya Purana)" },
+    { id: "hin-imams", title: "The awaited guides and the Imams" },
+    { id: "hin-karbala", title: "Karbala and the sacrifice of Imam al-Husayn (a.s.)" },
+  ]},
+  { religion: "Buddhism", symbol: SYM_WHEEL, items: [
+    { id: "bud-muhammad", title: "The awaited Maitreya — Prophet Muhammad ﷺ" },
+    { id: "bud-guide", title: "The coming guide of the world" },
+  ]},
+];
+function proofBar(ri, ii, p) {
+  return `
+    <button class="option-bar" onclick="openProof(${ri},${ii})">
+      <span class="ob-ic">${QURAN_ICON}</span>
+      <span class="ob-text"><span class="ob-title">${localizedText(p.title)}</span></span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`;
+}
+function renderProofs(v) {
+  const body = PROOF_RELIGIONS.map((r, ri) => `
+    <div class="proof-relig"><span class="proof-sym ${r.religion === "Hinduism" ? "proof-sym-om" : ""}">${r.symbol}</span> ${localizedText(r.religion)}</div>
+    ${r.items.map((p, ii) => proofBar(ri, ii, p)).join("")}`).join("");
+  v.innerHTML = head("nav_proofs")
+    + `<p class="ahlq-intro">${localizedText("Signs and prophecies of the truths of Shia Islam — the leadership of the twelve Imams, the sacrifice of Karbala, the coming of Prophet Muhammad ﷺ, and the land of Palestine — as found in the scriptures of other religions.")}</p>`
+    + body;
+}
+function openProof(ri, ii) {
+  const r = PROOF_RELIGIONS[ri]; if (!r) return;
+  const p = r.items[ii]; if (!p) return;
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const data = (typeof PROOFS_DATA !== "undefined" && p.id) ? PROOFS_DATA[p.id] : null;
+  const refs = data ? evList(data.refs) : [];
+  const context = data ? evList(data.context) : [];
+  const refsHtml = refs.length ? `
+        <div class="ev-sec-title">${localizedText("The reference")}</div>
+        ${refs.map((s) => `<div class="proof-ref">${s}</div>`).join("")}` : "";
+  const ctxHtml = context.length ? `
+        <div class="ev-sec-title">${localizedText("Context & explanation")}</div>
+        <div class="ahlq-content">${context.map((s) => `<p>${s}</p>`).join("")}</div>` : "";
+  openQuranReader(`
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(p.title)}</span>
+      </div>
+      <div class="qr-body" dir="${rtl ? "rtl" : "ltr"}">
+        <div class="ahlq-ref" style="text-align:center;margin-bottom:18px"><span class="proof-sym">${r.symbol}</span> ${localizedText(r.religion)}</div>
+        ${refsHtml}
+        ${ctxHtml}
+        <div class="ahlq-sign">${localizedText("Explanation by")} <strong>Al-Wilayat</strong></div>
+      </div>
+    </div>`);
+}
+
+// ---------- JOURNEY (sacred ziyarat & pilgrimage journeys) ----------
+const JOURNEY_LIST = [
+  { id: "jr-arbaeen", name: "Arba'een Walk", place: "Karbala", date: "20 Safar" },
+  { id: "jr-ashura", name: "Ashura Ziyarat", place: "Karbala", date: "10 Muharram" },
+  { id: "jr-ghadir", name: "Eid al-Ghadir", place: "Najaf", date: "18 Dhu al-Hijjah" },
+  { id: "jr-arafah", name: "Arafah", place: "Karbala & Makkah", date: "9 Dhu al-Hijjah" },
+  { id: "jr-qadr", name: "Laylat al-Qadr", place: "Najaf & Karbala", date: "Ramadan" },
+  { id: "jr-mahdi", name: "Birth of Imam al-Mahdi (a.s.)", place: "Jamkaran Mosque", date: "15 Sha'ban" },
+  { id: "jr-ali", name: "Martyrdom of Imam Ali (a.s.)", place: "Imam Ali Shrine, Najaf" },
+  { id: "jr-husayn", name: "Martyrdom of Imam Husayn (a.s.)", place: "Imam Husayn Shrine, Karbala" },
+  { id: "jr-askari", name: "Martyrdom of Imam Hasan al-Askari (a.s.)", place: "Al-Askari Shrine, Samarra" },
+  { id: "jr-ridha", name: "Birth & martyrdom of Imam al-Ridha (a.s.)", place: "Imam Reza Shrine, Mashhad" },
+  { id: "jr-masumah", name: "Birth & martyrdom of Lady Fatimah al-Ma'sumah (a.s.)", place: "Shrine of Fatima Masumeh, Qom" },
+  { id: "jr-atabat", name: "Pilgrimage to the shrines of the Imams in Iraq", place: "Atabat — Najaf, Karbala, Kadhimayn & Samarra" },
+];
+function journeyBoxes(list) {
+  return list.map((j, i) => `
+    <button class="ev-box" onclick="openJourney(${i})">
+      <span class="ev-num">${i + 1}</span>
+      <span class="ev-name">${localizedText(j.name)}</span>
+      <span class="ev-date">${localizedText(j.place)}${j.date ? ` · ${localizedText(j.date)}` : ""}</span>
+    </button>`).join("");
+}
+function renderJourney(v) {
+  v.innerHTML = head("nav_journey")
+    + `<p class="ahlq-intro">${localizedText("Sacred ziyarat and pilgrimage journeys of the followers of the Ahl al-Bait.")}</p>`
+    + `<div class="jr-grid">${journeyBoxes(JOURNEY_LIST)}</div>`;
+}
+function openJourney(i) {
+  const j = JOURNEY_LIST[i]; if (!j) return;
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const data = (typeof JOURNEY_DATA !== "undefined" && j.id) ? JOURNEY_DATA[j.id] : null;
+  const intro = data ? evF(data.intro) : "";
+  const steps = data ? evList(data.steps) : [];
+  const recite = data ? evList(data.recite) : [];
+  const prayer = (data && data.prayer) ? evF(data.prayer) : "";
+  const acts = data ? evList(data.acts) : [];
+  const sec = (title, inner) => `<div class="ev-sec-title">${localizedText(title)}</div>${inner}`;
+  const stepsHtml = steps.length ? sec("What to do — step by step", `<ol class="ev-steps">${steps.map((s) => `<li>${s}</li>`).join("")}</ol>`) : "";
+  const reciteHtml = recite.length ? sec("What to recite", `<ul class="ev-acts">${recite.map((s) => `<li>${s}</li>`).join("")}</ul>`) : "";
+  const prayerHtml = prayer ? sec("How to perform the prayer", `<div class="ev-prayer">${prayer}</div>`) : "";
+  const actsHtml = acts.length ? sec("Etiquette & activities", `<ul class="ev-acts">${acts.map((s) => `<li>${s}</li>`).join("")}</ul>`) : "";
+  openQuranReader(`
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(j.name)}</span>
+      </div>
+      <div class="qr-body" dir="${rtl ? "rtl" : "ltr"}">
+        <div class="ahlq-ref" style="text-align:center;margin-bottom:6px">${localizedText(j.place)}</div>
+        ${j.date ? `<div class="ahlq-ref" style="text-align:center;margin-bottom:16px">${localizedText(j.date)}</div>` : ""}
+        ${intro ? `<p class="ev-intro">${intro}</p>` : ""}
+        ${stepsHtml}
+        ${reciteHtml}
+        ${prayerHtml}
+        ${actsHtml}
+        <div class="ahlq-sign">${localizedText("Explanation by")} <strong>Al-Wilayat</strong></div>
+      </div>
+    </div>`);
+}
+
+// ---------- EVENTS (Shia calendar of occasions) ----------
+// Grouped like the Stories boxes. Names carry their honorifics inline. Dates
+// (where given) show under the name. Tapping a box opens a slide-up detail sheet.
+const EVENT_CATS = [
+  { title: "Major celebrations (Eid and Wiladah)", items: [
+    { id: "eid-fitr", name: "Eid al-Fitr", date: "1 Shawwal" },
+    { id: "eid-adha", name: "Eid al-Adha", date: "10 Dhu al-Hijjah" },
+    { id: "eid-ghadir", name: "Eid al-Ghadir", date: "18 Dhu al-Hijjah" },
+    { id: "eid-mubahalah", name: "Eid al-Mubahalah", date: "24 Dhu al-Hijjah" },
+    { id: "eid-mabath", name: "Eid al-Mab'ath — Beginning of the Prophet's mission", date: "27 Rajab" },
+  ]},
+  { title: "Birth anniversaries (Wiladah)", items: [
+    { id: "wl-prophet", name: "Prophet Muhammad ﷺ" },
+    { id: "wl-ali", name: "Imam Ali (a.s.)" },
+    { id: "wl-fatimah", name: "Lady Fatimah al-Zahra (a.s.)" },
+    { id: "wl-hasan", name: "Imam Hasan (a.s.)" },
+    { id: "wl-husayn", name: "Imam Husayn (a.s.)" },
+    { id: "wl-sajjad", name: "Imam Zayn al-Abidin (a.s.)" },
+    { id: "wl-baqir", name: "Imam Muhammad al-Baqir (a.s.)" },
+    { id: "wl-sadiq", name: "Imam Ja'far al-Sadiq (a.s.)" },
+    { id: "wl-kazim", name: "Imam Musa al-Kazim (a.s.)" },
+    { id: "wl-ridha", name: "Imam Ali al-Ridha (a.s.)" },
+    { id: "wl-jawad", name: "Imam Muhammad al-Jawad (a.s.)" },
+    { id: "wl-hadi", name: "Imam Ali al-Hadi (a.s.)" },
+    { id: "wl-askari", name: "Imam Hasan al-Askari (a.s.)" },
+    { id: "wl-mahdi", name: "Imam al-Mahdi (a.j.)" },
+  ]},
+  { title: "Days of mourning (Shahadah)", items: [
+    { id: "sh-prophet", name: "Passing of the Prophet Muhammad ﷺ" },
+    { id: "sh-fatimah", name: "Martyrdom of Lady Fatimah al-Zahra (a.s.)" },
+    { id: "sh-ali", name: "Martyrdom of Imam Ali (a.s.)" },
+    { id: "sh-hasan", name: "Martyrdom of Imam Hasan (a.s.)" },
+    { id: "sh-ashura", name: "Ashura — Martyrdom of Imam Husayn (a.s.)", date: "10 Muharram" },
+    { id: "sh-arbaeen", name: "Arba'een", date: "20 Safar" },
+    { id: "sh-sajjad", name: "Martyrdom of Imam Zayn al-Abidin (a.s.)" },
+    { id: "sh-baqir", name: "Martyrdom of Imam Muhammad al-Baqir (a.s.)" },
+    { id: "sh-sadiq", name: "Martyrdom of Imam Ja'far al-Sadiq (a.s.)" },
+    { id: "sh-kazim", name: "Martyrdom of Imam Musa al-Kazim (a.s.)" },
+    { id: "sh-ridha", name: "Martyrdom of Imam Ali al-Ridha (a.s.)" },
+    { id: "sh-jawad", name: "Martyrdom of Imam Muhammad al-Jawad (a.s.)" },
+    { id: "sh-hadi", name: "Martyrdom of Imam Ali al-Hadi (a.s.)" },
+    { id: "sh-askari", name: "Martyrdom of Imam Hasan al-Askari (a.s.)" },
+  ]},
+  { title: "Other important nights and occasions", items: [
+    { id: "oc-qadr", name: "Laylat al-Qadr", date: "19th, 21st & 23rd of Ramadan" },
+    { id: "oc-qadr-nights", name: "Nights of Qadr — especially the 23rd night" },
+    { id: "oc-arafah", name: "Arafah", date: "9 Dhu al-Hijjah" },
+    { id: "oc-new-year", name: "First of Muharram — Islamic New Year", date: "1 Muharram" },
+    { id: "oc-muharram", name: "Month of Muharram — mourning period" },
+    { id: "oc-safar", name: "Month of Safar — continued mourning" },
+    { id: "oc-nisf-shaban", name: "Nisf Sha'ban — Birth of Imam al-Mahdi (a.j.) & a night of worship", date: "15 Sha'ban" },
+  ]},
+];
+function eventBoxes(items, ci, start) {
+  return items.map((e, ii) => `
+    <button class="ev-box" onclick="openEvent(${ci},${ii})">
+      <span class="ev-num">${start + ii}</span>
+      <span class="ev-name">${localizedText(e.name)}</span>
+      ${e.date ? `<span class="ev-date">${localizedText(e.date)}</span>` : ""}
+    </button>`).join("");
+}
+function renderEvents(v) {
+  let n = 1;
+  const cats = EVENT_CATS.map((c, ci) => {
+    const boxes = eventBoxes(c.items, ci, n);
+    n += c.items.length;
+    return `<div class="ev-cat">${localizedText(c.title)}</div>
+      <div class="ev-scroll">${boxes}</div>`;
+  }).join("");
+  v.innerHTML = head("nav_events") + `<div id="eventsBody">${cats}</div>`;
+}
+const evF = (o) => (o && (o[trField() || "en"] || o.en)) || "";
+const evList = (o) => (o && (o[trField() || "en"] || o.en)) || [];
+function openEvent(ci, ii) {
+  const c = EVENT_CATS[ci]; if (!c) return;
+  const e = c.items[ii]; if (!e) return;
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const data = (typeof EVENTS_DATA !== "undefined" && e.id) ? EVENTS_DATA[e.id] : null;
+  const intro = data ? evF(data.intro) : "";
+  const steps = data ? evList(data.steps) : [];
+  const acts = data ? evList(data.acts) : [];
+  const prayer = (data && data.prayer) ? evF(data.prayer) : "";
+  const stepsHtml = steps.length ? `
+        <div class="ev-sec-title">${localizedText("How to observe it — step by step")}</div>
+        <ol class="ev-steps">${steps.map((s) => `<li>${s}</li>`).join("")}</ol>` : "";
+  const prayerHtml = prayer ? `
+        <div class="ev-sec-title">${localizedText("How to perform the prayer")}</div>
+        <div class="ev-prayer">${prayer}</div>` : "";
+  const actsHtml = acts.length ? `
+        <div class="ev-sec-title">${localizedText("Recommended acts & activities")}</div>
+        <ul class="ev-acts">${acts.map((a) => `<li>${a}</li>`).join("")}</ul>` : "";
+  openQuranReader(`
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(e.name)}</span>
+      </div>
+      <div class="qr-body" dir="${rtl ? "rtl" : "ltr"}">
+        ${e.date ? `<div class="ahlq-ref" style="text-align:center;margin-bottom:16px">${localizedText(e.date)}</div>` : ""}
+        ${intro ? `<p class="ev-intro">${intro}</p>` : ""}
+        ${stepsHtml}
+        ${prayerHtml}
+        ${actsHtml}
+        <div class="ahlq-sign">${localizedText("Explanation by")} <strong>Al-Wilayat</strong></div>
+      </div>
+    </div>`);
+}
+
+// ---------- AHL AL-BAIT IN THE QURAN ----------
+// Data lives in web/js/ahlquran.js (var AHL_PROOFS) — the ten Quranic proofs for
+// the Ahl al-Bait and their leadership, with verse + 7-language explanation.
+const ahlProofs = () => (typeof AHL_PROOFS !== "undefined" ? AHL_PROOFS : []);
+// Pick the field for the current language from an {en,ar,ur,fa,az,ms} object.
+const apF = (o) => (o && (o[trField() || "en"] || o.en)) || "";
+const QURAN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>';
+function ahlProofBar(p, i) {
+  return `
+    <button class="option-bar" onclick="openAhlProof('${p.id}')">
+      <span class="ob-ic">${QURAN_ICON}</span>
+      <span class="ob-text">
+        <span class="ob-title">${i + 1}. ${apF(p.name)}</span>
+        <span class="ob-sub">${p.ref}</span>
+      </span>
+      <span class="ob-arrow" aria-hidden="true">›</span>
+    </button>`;
+}
+function renderAhlQuran(v) {
+  v.innerHTML = head("title_ahlquran")
+    + `<p class="ahlq-intro">${localizedText("The clearest proofs in the Qur'an for the Ahl al-Bait and their divinely-appointed leadership.")}</p>`
+    + ahlProofs().map((p, i) => ahlProofBar(p, i)).join("");
+}
+function ahlProofHTML(p) {
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const num = ahlProofs().findIndex((x) => x.id === p.id) + 1;
+  const exp = (p.exp && (p.exp[trField() || "en"] || p.exp.en)) || [];
+  const verseTr = apF(p.verseTr);
+  const paras = exp.map((para) => `<p>${para}</p>`).join("");
+  // recitation audio for the proof's Qur'anic verse (surah:ayah from the ref)
+  const km = (p.ref || "").match(/(\d+):(\d+)/);
+  const key = km ? km[0] : "";
+  const playBtn = (p.verse && key) ? `<button class="qverse-play" onclick="reciteVerse('${key}', this)" aria-label="${localizedText("Recite")}"><span class="qv-play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span class="qv-stop"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></span></button>` : "";
+  return `
+    <div class="q-reader ahlq-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${num}. ${apF(p.name)}</span>
+      </div>
+      <div class="qr-body" dir="${rtl ? "rtl" : "ltr"}">
+        <div class="ahlq-head">
+          <div class="ahlq-arname" dir="rtl" lang="ar">${p.arabicName}</div>
+          <div class="ahlq-ref">${p.ref}</div>
+        </div>
+        <div class="proof-verse">
+          ${playBtn}
+          <div class="ahlq-verse ahlq-verse-sm" dir="rtl" lang="ar">${p.verse}</div>
+        </div>
+        ${verseTr ? `<div class="ahlq-versetr">${verseTr}</div>` : ""}
+        <div class="ahlq-content">${paras}</div>
+        <div class="ahlq-sign">${localizedText("Explanation by")} <strong>Al-Wilayat</strong></div>
+      </div>
+    </div>`;
+}
+function openAhlProof(id) {
+  const p = ahlProofs().find((x) => x.id === id);
+  if (!p) return;
+  openQuranReader(ahlProofHTML(p));
+}
 const routeFor = (id) => (id === "ahlulbayt" ? "ahlulbayt" : id);
-const ARABIC_SCRIPT_LANGS = ["ar", "ur", "fa", "prs", "ks"];
+const ARABIC_SCRIPT_LANGS = ["ar", "ur", "fa", "ks"];
 // Latin-script langs: untranslated phrases stay English instead of blank.
-const EN_LIKE_LANGS = ["en", "sg", "az", "ms"];
+const EN_LIKE_LANGS = ["en", "az", "ms"];
 const ARABIC_RE = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
 const isArabicScript = (s) => ARABIC_RE.test(s || "");
 const localizedText = (str) => localizeStr(str || "");
@@ -660,6 +1948,8 @@ const translatedContent = (str) => translatedOrEmpty(str);
 // (ur/fa/az/ms — Kashmiri→ur, Dari→fa) when available; otherwise the English.
 // The Arabic original (h.ar) is never changed.
 function hadithTrans(h) {
+  // Kashmiri has its own real translation; fall back to Urdu, then English.
+  if (State.lang === "ks" && h && h.ks) return h.ks;
   const f = trField();                       // "ur" | "fa" | "az" | "ms" | "en" | null
   if (f && f !== "en" && h && h[f]) return h[f];
   return translatedContent(h && h.en);
@@ -678,11 +1968,9 @@ const dirLabel = (d) => (ARABIC_SCRIPT_LANGS.includes(State.lang) ? ({ N: "شم"
 // when a niche tag like ks-Arab / fa-AF isn't in the browser's data).
 const dateLocale = () => ({
   en: undefined,
-  sg: ["en-SG", "en"],
   ar: ["ar"],
   ur: ["ur", "ur-PK"],
   fa: ["fa"],
-  prs: ["fa-AF", "fa"],
   az: ["az", "az-Latn", "tr"],
   ms: ["ms", "ms-MY", "id"],
   ks: ["ks-Arab", "ks", "ur"],
@@ -691,12 +1979,8 @@ const dateLocale = () => ({
 // ---------- QURAN ----------
 async function renderQuran(v) {
   v.innerHTML = head("m_quran", "m_quran_d") + `
-    <label class="search" style="margin-bottom:16px"><span>🔍</span>
+    <label class="search" style="margin-bottom:16px"><span class="search-ic">${SEARCH_ICON}</span>
       <input id="qSearch" placeholder="${t("search")}" onkeydown="if(event.key==='Enter')quranSearch()"></label>
-    <div class="chips" id="juzChips">
-      <span class="chip active" onclick="renderQuran(document.getElementById('view-quran'))">${t("surahs")}</span>
-      ${Array.from({ length: 30 }, (_, i) => `<span class="chip" onclick="openJuz(${i + 1})">${t("juz")} ${i + 1}</span>`).join("")}
-    </div>
     <div id="quranBody"><div class="card">${t("loading")}</div></div>`;
   try {
     const data = await api("/quran/surahs");
@@ -727,21 +2011,19 @@ function verseBlock(a, surahN) {
   const tf = trField();
   const tr = tf ? `<div class="tr">${a[tf] || ""}</div>` : "";
   const audio = a.audio ? `<button class="chip" onclick="event.stopPropagation();playAyah(this,'${a.audio}')">${ICON_PLAY}</button>` : "";
-  const taf = surahN ? `<button class="chip" onclick="event.stopPropagation();toggleTafsir(${surahN},${a.n},this)">📚 ${localizedText("Tafsir al-Mizan")}</button>` : "";
   return `<div class="ayah-block"${surahN ? ` data-v="${surahN}:${a.n}"` : ""}>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span class="num">${surahN ? surahN + ":" : ""}${a.n}</span>
-        <span style="display:flex;gap:6px">${audio}${taf}</span></div>
+        <span style="display:flex;gap:6px">${audio}</span></div>
       <div class="ar">${a.ar}</div>
-      <div class="translit">${a.translit || ""}</div>${tr}
-      <div class="tafsir-box" style="display:none"></div></div>`;
+      <div class="translit">${a.translit || ""}</div>${tr}</div>`;
 }
 
 // tafsir edition follows the active language (falls back to English)
 // al-Mizan exists in ar/fa/ur/en; map each UI language onto the closest edition
 // (Kashmiri→Urdu, Dari→Farsi; Azerbaijani/Malay/Singapore→English).
 const tafsirEdition = () => "almizan_" +
-  ({ en: "en", sg: "en", ar: "ar", fa: "fa", prs: "fa", ur: "ur", ks: "ur", az: "az", ms: "ms" }[State.lang] || "en");
+  ({ en: "en", ar: "ar", fa: "fa", ur: "ur", ks: "ur", az: "az", ms: "ms" }[State.lang] || "en");
 
 async function toggleTafsir(s, a, btn) {
   const box = btn.closest(".ayah-block").querySelector(".tafsir-box");
@@ -759,10 +2041,49 @@ async function toggleTafsir(s, a, btn) {
     box.innerHTML = `<div style="color:var(--text-2);padding:10px">${localizedText("Tafsir unavailable. Please make sure the backend is running.")}</div>`;
   }
 }
+// Whole-surah al-Mizan tafsir, opened from the top Tafsir button (passage by
+// passage, loaded progressively). No per-verse chips anymore.
+async function openSurahTafsir(n) {
+  const meta = _savedSurahMeta[n] || {};
+  const ayat = meta.ayat || 286;
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  openQuranReader(`
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="openSurah(${n})" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText("Tafsir al-Mizan")}${meta.name ? " · " + meta.name : ""}</span>
+      </div>
+      <div class="qr-body" id="surahTafBody" dir="${rtl ? "rtl" : "ltr"}">
+        <div class="qr-load"><div class="card">${t("loading")}</div></div>
+      </div>
+    </div>`);
+  const body = el("#surahTafBody"); if (!body) return;
+  let html = "", a = 1, guard = 0;
+  try {
+    while (a <= ayat && guard++ < 500) {
+      const d = await api(`/quran/tafsir/${n}/${a}?edition=${tafsirEdition()}`);
+      const from = (d.covers && d.covers.from) || a;
+      const to = (d.covers && d.covers.to) || a;
+      html += `<div class="card" style="margin-bottom:14px">
+        <div class="eyebrow">📚 ${localizedText("verses")} ${n}:${from}${to !== from ? "–" + to : ""}</div>
+        <div style="margin-top:10px;line-height:1.9;white-space:pre-wrap;${rtl ? "direction:rtl;text-align:right" : ""}">${tafsirToHtml(d.text)}</div>
+      </div>`;
+      body.innerHTML = html;                       // render progressively
+      a = (to >= from) ? to + 1 : a + 1;
+    }
+    if (!html) body.innerHTML = `<div class="card">${localizedText("Tafsir unavailable. Please make sure the backend is running.")}</div>`;
+  } catch {
+    body.innerHTML = html + `<div class="card">${localizedText("Tafsir unavailable. Please make sure the backend is running.")}</div>`;
+  }
+}
 // minimal markdown: strip code fences, bold, headings
 function tafsirToHtml(md) {
   return escapeHtml(md || "")
     .replace(/```[a-z]*\n?/g, "").replace(/```/g, "")
+    // move the trailing verse number to the FRONT of each English verse line:
+    // "In the Name of Allah… (1)"  →  "(1) In the Name of Allah…"
+    // (only spaces/tabs — never newlines — so the gaps between verses stay intact)
+    .replace(/^([ \t]*.*[A-Za-z].*?)[ \t]*\((\d+)\)[ \t]*$/gm, "($2) $1")
     .replace(/^#+\s*(.+)$/gm, "<strong>$1</strong>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>");
@@ -784,25 +2105,101 @@ function observeVersesRead(container) {
   container.querySelectorAll(".ayah-block[data-v]").forEach((b) => _verseObserver.observe(b));
 }
 
+// Live: count each hadith once as it scrolls into view (per-user daily reads).
+let _hadithObserver = null;
+function observeHadithRead(container) {
+  if (typeof IntersectionObserver === "undefined") return;
+  if (_hadithObserver) _hadithObserver.disconnect();
+  _hadithObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && e.target.dataset.h) {
+        Stats.addHadithRead(e.target.dataset.h);
+        _hadithObserver.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.6 });
+  container.querySelectorAll(".ayah-block[data-h]").forEach((b) => _hadithObserver.observe(b));
+}
+
+// ---------- Quran reader sheet (slides up from the bottom) ----------
+function openQuranReader(html) {
+  const sheet = el("#qrSheet");
+  const body = el("#qrSheetBody");
+  if (body) body.innerHTML = html;
+  const alreadyOpen = sheet && sheet.classList.contains("open");
+  if (sheet && !alreadyOpen) {
+    // guarantee the slide-up transition fires from the closed (off-screen) state
+    sheet.classList.remove("open");
+    void sheet.offsetHeight;                 // force reflow
+    if (body) body.scrollTop = 0;
+    requestAnimationFrame(() => sheet.classList.add("open"));
+  }
+  el("#qrBackdrop")?.classList.add("open");
+  document.body.classList.add("sheet-lock");
+  if (!(history.state && history.state.qrOpen)) {
+    history.pushState({ wilayat: true, route: State.route, index: _navIndex, qrOpen: true }, "", location.href);
+  }
+  return body;
+}
+function closeQuranReader() {
+  stopSurahAudio();
+  stopVerseAudio();
+  el("#qrSheet")?.classList.remove("open");
+  el("#qrBackdrop")?.classList.remove("open");
+  document.body.classList.remove("sheet-lock");
+}
+
+// ---- Per-verse Qur'an recitation (real reciter audio, one or more ayat) ----
+let _verseAudio = null;
+function stopVerseAudio() {
+  try { if (_verseAudio) { _verseAudio.onended = null; _verseAudio.onerror = null; _verseAudio.pause(); _verseAudio = null; } } catch (e) {}
+  document.querySelectorAll(".qverse-play.playing").forEach((b) => b.classList.remove("playing"));
+}
+function reciteVerse(ref, btn) {
+  const m = String(ref).match(/(\d+):(\d+)(?:-(\d+))?/);
+  if (!m) return;
+  const already = btn && btn.classList.contains("playing");
+  stopVerseAudio();
+  if (already) return;                      // tapping the playing button stops it
+  const s = +m[1], a1 = +m[2], a2 = m[3] ? +m[3] : a1;
+  const pad = (n, w) => String(n).padStart(w, "0");
+  const keys = [];
+  for (let a = a1; a <= a2; a++) keys.push(pad(s, 3) + pad(a, 3));
+  if (btn) btn.classList.add("playing");
+  let i = 0;
+  const playNext = () => {
+    if (i >= keys.length) { stopVerseAudio(); return; }
+    _verseAudio = new Audio("https://everyayah.com/data/Alafasy_128kbps/" + keys[i] + ".mp3");
+    _verseAudio.onended = () => { i++; playNext(); };
+    _verseAudio.onerror = () => { stopVerseAudio(); toast(localizedText("Recitation not available")); };
+    _verseAudio.play().catch(() => { stopVerseAudio(); });
+  };
+  playNext();
+}
+
 async function openSurah(n) {
   stopSurahAudio();                       // reset recitation state for the new surah
-  const body = el("#quranBody");
-  body.innerHTML = `<div class="card">${t("loading")}</div>`;
+  const body = openQuranReader(`<div class="qr-load"><div class="card">${t("loading")}</div></div>`);
   try {
     const d = await api(`/quran/surah/${n}`);   // verses are counted per-ayah as they scroll into view
     const allAudio = d.verses.filter((v) => v.audio).map((v) => v.audio);
-    body.innerHTML = `
-      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-        <button class="btn ghost" onclick="renderQuran(document.getElementById('view-quran'))">← ${t("surahs")}</button>
-        <button class="btn" id="surahPlayBtn" onclick="playSurah(${n})">${ICON_PLAY} ${t("listen")}</button>
-        <button class="btn ghost" onclick="toast(t('saved'))">🔖 ${t("bookmark")}</button>
+    _savedSurahMeta[n] = { ar: d.ar, name: quranListTitle({ ...d, n }), ayat: d.ayat };
+    body.innerHTML = `<div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <button class="qr-listen" id="surahPlayBtn" onclick="playSurah(${n})">${ICON_PLAY}<span>${t("listen")}</span></button>
+        <button class="qr-save ${Saved.has("surah-" + n) ? "saved" : ""}" onclick="toggleSaveSurah(${n}, this)" aria-label="${t("bookmark")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+        <button class="qr-listen qr-taf-btn" style="margin-inline-start:auto" onclick="openSurahTafsir(${n})" aria-label="${localizedText("Tafsir al-Mizan")}">📚<span>${localizedText("Tafsir")}</span></button>
       </div>
-      <div class="card" style="text-align:center;margin-bottom:16px">
-        <h2 style="font-family:Amiri,serif;font-size:32px;color:var(--text-0)">${d.ar}</h2>
-        <p style="color:var(--text-2)">${quranListTitle({ ...d, n })}${surahMeaning(d.meaning) ? " · " + surahMeaning(d.meaning) : ""} · ${d.ayat} ${t("verses")}</p>
+      <div class="qr-body">
+        <div class="card" style="text-align:center;margin-bottom:16px">
+          <h2 style="font-family:Amiri,serif;font-size:32px;color:var(--text-0)">${d.ar}</h2>
+          <p style="color:var(--text-2)">${quranListTitle({ ...d, n })}${surahMeaning(d.meaning) ? " · " + surahMeaning(d.meaning) : ""} · ${d.ayat} ${t("verses")}</p>
+        </div>
+        ${n !== 1 && n !== 9 ? `<div class="ayah-block" style="text-align:center"><div class="ar">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div></div>` : ""}
+        ${d.verses.map((a) => verseBlock(a, n)).join("")}
       </div>
-      ${n !== 1 && n !== 9 ? `<div class="ayah-block" style="text-align:center"><div class="ar">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div></div>` : ""}
-      ${d.verses.map((a) => verseBlock(a, n)).join("")}`;
+    </div>`;
     window._surahAudio = allAudio;
     observeVersesRead(body);   // count each verse once as it scrolls into view (Mac + live)
   } catch {
@@ -813,7 +2210,10 @@ async function openSurah(n) {
 let _surahPlay = { queue: [], i: 0, active: false };
 function setSurahPlayBtn(playing) {
   const btn = el("#surahPlayBtn");
-  if (btn) btn.innerHTML = playing ? `${ICON_PAUSE} ${t("pause")}` : `${ICON_PLAY} ${t("listen")}`;
+  if (btn) {
+    btn.innerHTML = playing ? `${ICON_PAUSE}<span>${t("pause")}</span>` : `${ICON_PLAY}<span>${t("listen")}</span>`;
+    btn.classList.toggle("playing", !!playing);
+  }
 }
 function stopSurahAudio() {
   if (currentAudio) { currentAudio.pause(); currentAudio.onended = null; }  // break the auto-advance chain
@@ -844,14 +2244,20 @@ function playSurah(n) {
 }
 
 async function openJuz(j) {
-  const body = el("#quranBody");
-  body.innerHTML = `<div class="card">${t("loading")}</div>`;
+  const body = openQuranReader(`<div class="qr-load"><div class="card">${t("loading")}</div></div>`);
   try {
     const d = await api(`/quran/juz/${j}`);
-    body.innerHTML = `
-      <button class="btn ghost" style="margin-bottom:16px" onclick="renderQuran(document.getElementById('view-quran'))">← ${t("surahs")}</button>
-      <div class="card" style="text-align:center;margin-bottom:16px"><h2>${t("juz")} ${j}</h2><p style="color:var(--text-2)">${d.count} ${t("verses")}</p></div>
-      ${d.verses.map((a) => verseBlock(a, a.surah)).join("")}`;
+    body.innerHTML = `<div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${t("juz")} ${j}</span>
+      </div>
+      <div class="qr-body">
+        <div class="card" style="text-align:center;margin-bottom:16px"><h2>${t("juz")} ${j}</h2><p style="color:var(--text-2)">${d.count} ${t("verses")}</p></div>
+        ${d.verses.map((a) => verseBlock(a, a.surah)).join("")}
+      </div>
+    </div>`;
+    observeVersesRead(body);
   } catch { body.innerHTML = offlineBanner(); }
 }
 
@@ -870,14 +2276,148 @@ async function quranSearch() {
 }
 
 // ---------- HADITH ----------
+// Professional stats graph: library size (brown→orange = magnitude) + your reading (green = activity).
+function hadithGraph(allBooks) {
+  const avail = (allBooks || []).filter((b) => b.downloaded && b.count);
+  if (!avail.length) return "";
+  // include the big full-text collections (page-based, scholarly counts) in the totals
+  const totalNarr = avail.reduce((a, b) => a + (b.count || 0), 0) + hlibNarrTotal();
+  const totalColl = avail.length + HLIB_LIST.length;   // count each book (incl. every volume) as one collection
+  // Combined chart list: existing books (volumes grouped) + the big collections.
+  const grouped = groupHadithBooks(avail).map((g) => g.group
+    ? { name: disp(g.name, hlibArBase(g.vols[0].bookId) || g.name, ""), count: g.vols.reduce((a, b) => a + (b.count || 0), 0) }
+    : { name: disp(g.book.name, HADITH_AR[g.book.bookId] || g.book.name, ""), count: g.book.count || 0 });
+  const hlibChart = HLIB_LIST.map((tk) => ({ name: disp(tk.name, tk.name, ""), count: HLIB_NARR[tk.slug] || 0 }));
+  const top = grouped.concat(hlibChart).sort((a, b) => b.count - a.count).slice(0, 6);
+  const maxC = Math.max(...top.map((b) => b.count), 1);
+  const bars = top.map((b) => {
+    const pct = Math.max(6, Math.round((b.count / maxC) * 100));
+    return `<div class="hd-row">
+      <span class="hd-name" title="${b.name}">${b.name}</span>
+      <div class="hd-track"><i style="width:${pct}%"></i></div>
+      <span class="hd-val">${b.count.toLocaleString()}</span>
+    </div>`;
+  }).join("");
+
+  const week = Stats.hadithWeek();
+  const today = (week.find((d) => d.isToday) || { count: 0 }).count;
+  const weekTotal = week.reduce((a, d) => a + d.count, 0);
+
+  return `<div class="hd-graph card">
+    <div class="hd-stats">
+      <div class="hd-stat"><span class="n">${totalColl}</span><span class="l">${t("collections")}</span></div>
+      <div class="hd-stat"><span class="n">${totalNarr.toLocaleString()}</span><span class="l">${t("narrations")}</span></div>
+      <div class="hd-stat"><span class="n hd-green">${today}</span><span class="l">${localizedText("Read today")}</span></div>
+    </div>
+    <div class="hd-sec">${localizedText("Narrations by book")}</div>
+    <div class="hd-bars">${bars}</div>
+    <div class="hd-spark-head">
+      <span class="hd-sec" style="margin:0">${localizedText("Reading activity")} · ${localizedText("7 days")}</span>
+      <span class="hd-spark-total">${weekTotal} ${localizedText("read")}</span>
+    </div>
+    ${hadithSpark(week)}
+  </div>`;
+}
+
+// Smooth green area sparkline of the last 7 days' hadith reads.
+function hadithSpark(week) {
+  const W = 300, H = 104, padX = 14, padTop = 26, padBot = 24;
+  const n = week.length;
+  const maxW = Math.max(...week.map((d) => d.count), 4);
+  const dl = ["S", "M", "T", "W", "T", "F", "S"];
+  const xs = (i) => padX + i * ((W - 2 * padX) / (n - 1));
+  const ys = (c) => padTop + (1 - c / maxW) * (H - padTop - padBot);
+  const pts = week.map((d, i) => [xs(i), ys(d.count)]);
+  // Catmull-Rom → cubic bezier for a smooth line
+  let line = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || pts[i + 1];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    line += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  const area = line + ` L${pts[n - 1][0].toFixed(1)} ${(H - padBot).toFixed(1)} L${pts[0][0].toFixed(1)} ${(H - padBot).toFixed(1)} Z`;
+  const dots = pts.map((p, i) => {
+    const on = week[i].isToday;
+    return `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${on ? 4 : 2.6}" class="hd-dot${on ? " on" : ""}"/>`;
+  }).join("");
+  const labels = week.map((d, i) =>
+    `<text x="${xs(i).toFixed(1)}" y="${H - 5}" text-anchor="middle" class="hd-lbl${d.isToday ? " on" : ""}">${dl[d.dow]}</text>`).join("");
+  const ti = week.findIndex((d) => d.isToday);
+  const todayLbl = (ti >= 0 && week[ti].count > 0)
+    ? `<text x="${pts[ti][0].toFixed(1)}" y="${(pts[ti][1] - 8).toFixed(1)}" text-anchor="middle" class="hd-dot-lbl">${week[ti].count}</text>` : "";
+  return `<svg class="hd-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Reading activity, this week">
+    <defs>
+      <linearGradient id="hdSparkFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#00A6A6" stop-opacity=".42"/>
+        <stop offset="1" stop-color="#00A6A6" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="${area}" fill="url(#hdSparkFill)" class="hd-spark-area"/>
+    <path d="${line}" pathLength="100" fill="none" stroke="#00A6A6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="hd-spark-line"/>
+    ${dots}${todayLbl}${labels}
+  </svg>`;
+}
+
+// Group a book's volumes (Al-Kafi vol 1-8, Uyun vol 1-2) under one entry so the
+// list shows one bar per book → tapping opens its volumes as bars (like tafsir).
+let _hadithGroups = [];
+function groupHadithBooks(books) {
+  const out = [], byBase = {};
+  books.forEach((b) => {
+    const m = (b.bookId || "").match(/^(.*)-Volume-(\d+)-(.*)$/);
+    if (m) {
+      const key = m[1] + "|" + m[3];
+      if (!byBase[key]) { byBase[key] = { group: true, name: b.name, author: b.author, vols: [] }; out.push(byBase[key]); }
+      byBase[key].vols.push(b);
+    } else {
+      out.push({ group: false, book: b });
+    }
+  });
+  out.forEach((g) => { if (g.group) g.vols.sort((a, c) => (+a.bookId.match(/Volume-(\d+)/)[1]) - (+c.bookId.match(/Volume-(\d+)/)[1])); });
+  return out;
+}
+const hlibArBase = (id) => (HADITH_AR[id] || "").replace(/\s*[–-]\s*الجزء.*/, "").trim();
+function openHadithVolumes(gi) {
+  const g = _hadithGroups[gi]; if (!g || !g.group) return;
+  const arBase = hlibArBase(g.vols[0].bookId) || g.name;
+  const title = disp(g.name, arBase, t("nav_hadith"));
+  const bars = g.vols.map((b, vi) => {
+    const click = b.downloaded ? `openBook('${b.bookId}')` : `toast(t('downloading'))`;
+    return `<div class="list-item" onclick="${click}">
+      <div class="badge-num">${locNum(vi + 1, State.lang)}</div>
+      <div class="meta"><div class="t">${localizedText("Volume")} ${locNum(vi + 1, State.lang)}</div>
+        <div class="s">${(b.count || 0).toLocaleString()} ${t("narrations")}</div></div>
+    </div>`;
+  }).join("");
+  el("#hadithBody").innerHTML =
+    `<button class="btn ghost" style="margin-bottom:16px" onclick="renderHadith(document.getElementById('view-hadith'))">← ${t("collections")}</button>
+     <div class="page-head"><h1 style="font-size:18px">${title}</h1></div>${bars}`;
+  const b = el("#qrSheetBody"); window.scrollTo(0, 0);
+}
+
 async function renderHadith(v) {
   v.innerHTML = head("m_hadith", "m_hadith_d") + `
-    <label class="search" style="margin-bottom:16px"><span>🔍</span>
+    <label class="search" style="margin-bottom:16px"><span class="search-ic">${SEARCH_ICON}</span>
       <input id="hSearch" placeholder="${t("search")}" inputmode="search" oninput="hadithSearchLive(this.value)" onkeydown="if(event.key==='Enter')hadithSearch()"></label>
     <div id="hadithBody"><div class="card">${t("loading")}</div></div>`;
   try {
     const d = await api("/hadith/books");
-    const books = d.books.map((b) => {
+    _hadithGroups = groupHadithBooks(d.books);
+    const books = _hadithGroups.map((g, gi) => {
+      if (g.group) {
+        const arBase = hlibArBase(g.vols[0].bookId) || g.name;
+        const author = ARABIC_SCRIPT_LANGS.includes(State.lang)
+          ? (AUTHOR_AR[g.vols[0].bookId.split("-").pop()] || localizedText(g.author)) : localizedText(g.author);
+        const title = disp(g.name, arBase, t("nav_hadith"));
+        const total = g.vols.reduce((a, b) => a + (b.count || 0), 0);
+        return `<button class="ev-box" onclick="openHadithVolumes(${gi})">
+          <span class="ev-ic">${BOOKS_ICON}</span>
+          <span class="ev-name">${title}</span>
+          <span class="ev-date">${author} · ${g.vols.length} ${localizedText("volumes")}</span>
+        </button>`;
+      }
+      const b = g.book;
       const status = b.downloaded ? "" : b.unavailable ? ` · ⚠️ ${localizedText("not in source API")}` : " · ⏳";
       const click = b.downloaded ? `openBook('${b.bookId}')`
         : b.unavailable ? `toast(localizedText('This book is not available yet.'))`
@@ -886,22 +2426,23 @@ async function renderHadith(v) {
       const author = ARABIC_SCRIPT_LANGS.includes(State.lang)
         ? (AUTHOR_AR[b.bookId.split("-").pop()] || localizedText(b.author))
         : localizedText(b.author);
-      const title = disp(b.englishName || b.name, arName, t("nav_hadith"));
-      return `<div class="list-item" onclick="${click}" ${b.unavailable ? 'style="opacity:.55"' : ""}>
-        <div class="badge-num">${b.downloaded ? "📖" : b.unavailable ? "🚫" : "📜"}</div>
-        <div class="meta"><div class="t">${title}${status}</div>
-          <div class="s">${author} · ${b.count.toLocaleString()} ${t("narrations")}${b.edition ? " · " + editionLabel(b.edition) : ""}</div></div>
-        ${sideArabic(arName, title)}
-      </div>`;
+      const title = disp(b.name, arName, t("nav_hadith"));   // real book name, not the English meaning
+      return `<button class="ev-box" onclick="${click}" ${b.unavailable ? 'style="opacity:.55"' : ""}>
+        <span class="ev-ic">${b.unavailable ? BOOK_OFF_ICON : BOOK_ICON}</span>
+        <span class="ev-name">${title}</span>
+        <span class="ev-date">${author}</span>
+      </button>`;
     }).join("");
-    el("#hadithBody").innerHTML = `<div class="page-head"><h1 style="font-size:18px">${t("collections")} (${d.books.length})</h1></div>${books}`;
+    el("#hadithBody").innerHTML =
+      `<div class="page-head"><h1 style="font-size:18px">${t("collections")} (${_hadithGroups.reduce((n, g) => n + (g.group ? g.vols.length : 1), 0) + HLIB_LIST.length})</h1></div><div class="jr-grid">${books}${hlibBars()}</div>`;
   } catch {
-    el("#hadithBody").innerHTML = offlineBanner() + HADITH_BOOKS.map((b) => {
+    el("#hadithBody").innerHTML = offlineBanner()
+      + `<div class="page-head"><h1 style="font-size:18px">${t("collections")} (${HADITH_BOOKS.length + HLIB_LIST.length})</h1></div>`
+      + `<div class="jr-grid">` + HADITH_BOOKS.map((b) => {
       const title = disp(b.en, b.ar, t("nav_hadith"));
-      return `<div class="list-item"><div class="badge-num">📜</div>
-        <div class="meta"><div class="t">${title}</div><div class="s">${localizedText(b.author)} · ${b.count} ${t("narrations")}</div></div>
-        ${sideArabic(b.ar, title)}</div>`;
-    }).join("");
+      return `<button class="ev-box"><span class="ev-ic">${BOOK_ICON}</span>
+        <span class="ev-name">${title}</span><span class="ev-date">${localizedText(b.author)}</span></button>`;
+    }).join("") + hlibBars() + `</div>`;
   }
 }
 
@@ -927,31 +2468,35 @@ function refLine(h) {
 let _book = { id: null, page: 1, total: 0 };
 async function openBook(id, page = 1) {
   _book = { id, page, total: 0 };
-  const body = el("#hadithBody");
-  body.innerHTML = `<div class="card">${t("loading")}</div>`;
+  const body = openQuranReader(`<div class="qr-load"><div class="card">${t("loading")}</div></div>`);
   try {
     const d = await api(`/hadith/book/${id}?page=${page}&size=20`);
     _book.total = d.total;
     const pages = Math.ceil(d.total / d.size);
-    const items = d.hadiths.map((h) => `
-      <div class="ayah-block">
+    const items = d.hadiths.map((h, i) => `
+      <div class="ayah-block" data-h="${id}:${(page - 1) * 20 + i}">
         <div class="translit" style="margin:0 0 8px">${localizedText(h.category || "")} ${h.chapter ? "· " + localizedText(h.chapter) : ""}</div>
         ${h.ar ? `<div class="ar">${arHadithText(h.ar)}</div>` : ""}
         ${hadithTrans(h) ? `<div class="tr">${hadithTrans(h)}</div>` : ""}
         ${h.grading ? `<div class="translit">⚖️ ${localizedText(h.grading)}</div>` : ""}
         ${refLine(h)}
       </div>`).join("");
-    body.innerHTML = `
-      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
-        <button class="btn ghost" onclick="renderHadith(document.getElementById('view-hadith'))">← ${t("collections")}</button>
-        <strong>${localizedText(d.name)}</strong><span style="color:var(--text-2)">· ${d.total.toLocaleString()} ${t("narrations")}${d.edition ? " · " + editionLabel(d.edition) : ""}</span>
-      </div>${items}
-      <div style="display:flex;gap:10px;justify-content:center;margin-top:18px;align-items:center">
-        <button class="btn ghost" ${page <= 1 ? "disabled" : ""} onclick="openBook('${id}',${page - 1})">←</button>
-        <span style="color:var(--text-2)">${localizedText("Page")} ${page} / ${pages}</span>
-        <button class="btn ghost" ${page >= pages ? "disabled" : ""} onclick="openBook('${id}',${page + 1})">→</button>
-      </div>`;
-    window.scrollTo({ top: 0 });
+    body.innerHTML = `<div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${localizedText(d.name)}</span>
+      </div>
+      <div class="qr-body">
+        <div style="color:var(--text-2);font-size:13px;margin-bottom:14px">${d.total.toLocaleString()} ${t("narrations")}${d.edition ? " · " + editionLabel(d.edition) : ""}</div>
+        ${items}
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:18px;align-items:center">
+          <button class="btn ghost" ${page <= 1 ? "disabled" : ""} onclick="openBook('${id}',${page - 1})">←</button>
+          <span style="color:var(--text-2)">${localizedText("Page")} ${page} / ${pages}</span>
+          <button class="btn ghost" ${page >= pages ? "disabled" : ""} onclick="openBook('${id}',${page + 1})">→</button>
+        </div>
+      </div>
+    </div>`;
+    const sb = el("#qrSheetBody"); if (sb) { sb.scrollTop = 0; observeHadithRead(sb); }
   } catch { body.innerHTML = offlineBanner(); }
 }
 
@@ -1011,52 +2556,48 @@ async function renderZiyarat(v) {
   v.innerHTML = head("m_ziyarat", "m_ziyarat_d") + sections;
 }
 
-// shared inline reader for both ziyarat and dua cards
+// shared reader for both ziyarat and dua cards — opens sliding up from the bottom
 async function openText(kind, id, row) {
+  Stats.addTextRead(kind, id);   // track dua / ziyarat reads for the Progress dashboard
   const title = row.querySelector(".t").textContent.replace(" ›", "").trim();
   const arTitle = row.querySelector(".ar") ? row.querySelector(".ar").textContent.trim() : title;
-  const existing = document.getElementById("textReader");
-  const key = kind + ":" + (id || title);
-  // toggle closed if clicking the same card again
-  if (existing && existing.dataset.key === key) { existing.remove(); return; }
-  if (existing) existing.remove();
+  const backSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+  const topbar = (ttl) => `<div class="qr-topbar">
+      <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}">${backSvg}</button>
+      <span class="qr-title">${ttl}</span>
+    </div>`;
+  const body = openQuranReader(`<div class="qr-load"><div class="card">${t("loading")}</div></div>`);
 
-  const box = document.createElement("div");
-  box.id = "textReader"; box.dataset.key = key; box.className = "card";
-  box.style.marginTop = "12px";
-  box.innerHTML = t("loading");
-  row.after(box);
-  const close = `<button class="btn ghost" onclick="document.getElementById('textReader').remove()">✕</button>`;
-
-  if (!id) {  // full text not bundled — dignified inline note (never a dead toast)
-    box.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="flex:1">
-          <h2 style="font-family:Amiri,serif;color:var(--text-0)">${arTitle}</h2>
-          <div style="color:var(--text-2);font-size:14px">${title}</div>
-        </div>${close}
+  if (!id) {  // full text not bundled — dignified note (never a dead toast)
+    body.innerHTML = `<div class="q-reader">${topbar(title)}<div class="qr-body">
+      <div class="card" style="text-align:center;margin-bottom:14px">
+        <h2 style="font-family:Amiri,serif;color:var(--text-0)">${arTitle}</h2>
+        <div style="color:var(--text-2);font-size:14px">${title}</div>
       </div>
-      <p style="color:var(--text-1);line-height:1.8">${localizedText("The full text for this item is not bundled yet.")}</p>`;
-    box.scrollIntoView({ behavior: "smooth", block: "start" });
+      <p style="color:var(--text-1);line-height:1.8">${localizedText("The full text for this item is not bundled yet.")}</p>
+    </div></div>`;
     return;
   }
   try {
     const d = await api(`/${kind}/full/${id}`);
-    box.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <h2 style="flex:1;font-family:Amiri,serif;color:var(--text-0)">${d.ar_title}</h2>${close}
+    body.innerHTML = `<div class="q-reader">${topbar(disp(d.en_title, d.ar_title, title))}<div class="qr-body">
+      <div class="card" style="text-align:center;margin-bottom:16px">
+        <h2 style="font-family:Amiri,serif;color:var(--text-0)">${d.ar_title}</h2>
+        <p style="color:var(--text-2)">${disp(d.en_title, d.ar_title, title)} · ${d.count} ${t("passages")}</p>
       </div>
-      <p style="color:var(--text-2);margin-bottom:14px">${disp(d.en_title, d.ar_title, title)} · ${d.count} ${t("passages")}</p>
       ${d.verses.map((vrs) => {
         if (vrs.head) return `<h3 style="color:var(--text-0);margin:18px 0 8px;font-size:16px">${hadithTrans(vrs) || localizedText(vrs.en || "")}</h3>`;
         const ar = vrs.ar ? `<div class="ar">${vrs.ar}</div>` : "";
         const tr = hadithTrans(vrs);
         const en = tr ? `<div class="tr"${vrs.ar ? "" : ' style="font-size:16px;color:var(--text-1)"'}>${tr}</div>` : "";
         return `<div class="ayah-block">${ar}${en}</div>`;
-      }).join("")}`;
-    box.scrollIntoView({ behavior: "smooth", block: "start" });
+      }).join("")}
+    </div></div>`;
+    const sb = el("#qrSheetBody"); if (sb) sb.scrollTop = 0;
   } catch {
-    box.innerHTML = `<div style="display:flex;gap:10px"><span style='flex:1;color:var(--text-2)'>${localizedText("Text unavailable. Please make sure the backend is running.")}</span>${close}</div>`;
+    body.innerHTML = `<div class="q-reader">${topbar(title)}<div class="qr-body">
+      <div class="card" style="color:var(--text-2)">${localizedText("Text unavailable. Please make sure the backend is running.")}</div>
+    </div></div>`;
   }
 }
 
@@ -1151,6 +2692,22 @@ function getLocation(options = {}) {
       if (c) saveCoords(c.lat, c.lng, { source: "ip" });
       finish(c ? State.coords : null);
     };
+    // Native app (Capacitor): use the Geolocation plugin so the OS permission prompt shows.
+    const capGeo = (() => { try { return isNativeApp() ? window.Capacitor.Plugins.Geolocation : null; } catch { return null; } })();
+    if (capGeo) {
+      (async () => {
+        try {
+          let perm = await capGeo.checkPermissions();
+          if (perm.location !== "granted" && perm.coarseLocation !== "granted") perm = await capGeo.requestPermissions();
+          if (perm.location === "denied" && perm.coarseLocation === "denied") { viaIp(); return; }
+          const pos = await capGeo.getCurrentPosition({ enableHighAccuracy: highAccuracy, timeout, maximumAge });
+          saveCoords(pos.coords.latitude, pos.coords.longitude, { source: "gps", accuracy: pos.coords.accuracy });
+          finish(State.coords);
+        } catch { viaIp(); }
+      })();
+      setTimeout(() => { if (!done) viaIp(); }, timeout + 800);
+      return;
+    }
     if (!navigator.geolocation) { viaIp(); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -1198,6 +2755,7 @@ async function loadPrayerTimes() {
       label: label,
     };
   } catch { /* keep bundled fallback */ }
+  try { scheduleAzanReminders(); } catch (e) { /* reminders optional */ }
   if (State.route === "home" || State.route === "prayer") {
     RENDERERS[State.route](el("#view-" + State.route));
   }
@@ -1219,28 +2777,22 @@ function renderPrayer(v) {
     const obligatory = p.key !== "sunrise";
     const done = prayed.includes(p.key);
     const entered = nowMin >= toMin(times[p.key] || p.time);   // has this prayer's time arrived today?
-    let toggle = "";
-    if (obligatory) {
-      toggle = entered
-        ? `<button class="pray-toggle ${done ? "done" : ""}" onclick="togglePrayer('${p.key}')" title="${localizedText('Mark as prayed')}" aria-label="${localizedText('Mark as prayed')}">${done ? "✓" : ""}</button>`
-        : `<button class="pray-toggle locked" disabled title="${localizedText('You can mark it after the prayer time')}" aria-label="locked">${lockIco}</button>`;
-    }
-    return `<div class="prayer-row ${p.key === next.key ? "next" : ""} ${done ? "prayed" : ""}">
+    return `<div class="prayer-row ${p.key === next.key ? "next" : ""}">
       <div class="pn">${langName(p)} ${p.key === next.key ? "· " + t("next_prayer") : ""}</div>
-      <div class="pt">${times[p.key] || p.time}</div>${toggle}
+      <div class="pt">${times[p.key] || p.time}</div><span class="pray-slot"></span>
     </div>`;
   }).join("");
-  const total = OBLIGATORY().length;
-  const streakCard = `
+  const azanBtn = azanOn()
+    ? `<button class="btn ghost" onclick="disableAzan()"><span class="btn-ic">${BELL_ICON}</span>${localizedText("Azan reminders on")} · ${localizedText("turn off")}</button>`
+    : `<button class="btn" onclick="enableAzan()"><span class="btn-ic">${BELL_ICON}</span>${localizedText("Enable azan reminders")}</button>`;
+  v.innerHTML = head("m_prayer", "m_prayer_d") + `
     <div class="card" style="margin-bottom:16px;text-align:center">
-      <div class="big" style="font-size:26px;font-weight:800">🔥 ${Stats.prayerStreak(total)} ${t("days")}</div>
-      <div style="color:var(--text-2);font-size:13px;margin-top:4px">${t("streak")} · ${prayed.length}/${total} ${localizedText("prayers")}</div>
-    </div>`;
-  v.innerHTML = head("m_prayer", "m_prayer_d") + streakCard + `
-    <div class="card" style="margin-bottom:16px;text-align:center">
-      <div style="color:var(--text-2);font-size:13px">📍 ${escapeHtml(loc)}${State.lang === "en" ? " · " + escapeHtml(tz) : ""} · ${t("method_shia")}</div>
+      <div style="color:var(--text-2);font-size:13px">${escapeHtml(loc)}${State.lang === "en" ? " · " + escapeHtml(tz) : ""} · ${t("method_shia")}</div>
       <div class="big" style="font-size:24px;margin-top:6px;font-weight:800">${dateStr}</div>
-      <button class="btn ghost" style="margin-top:10px" onclick="requestLocation(true)">📍 ${t("use_location")}</button>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn ghost" onclick="requestLocation(true)"><span class="btn-ic">${PIN_ICON}</span>${t("use_location")}</button>
+        ${azanBtn}
+      </div>
     </div>${rows}`;
 }
 // Mark/unmark a prayer for today (live build) and refresh the view.
@@ -1451,21 +3003,202 @@ function renderCalendar(v) {
 function setCal(f) { _calFilter = f; renderCalendar(el("#view-calendar")); }
 
 // ---------- AHLUL BAYT ----------
-function renderAhlulBayt(v) {
-  const list = MASUMEEN.map((m, i) => {
-    const title = localizedText(m.en);
-    return `<div class="list-item">
-      <div class="badge-num">${i === 0 ? "🌟" : i}</div>
-      <div class="meta"><div class="t">${title}</div><div class="s">${localizedText(m.role)}</div></div>
-      ${sideArabic(m.ar, title)}
-    </div>`;
+// The 25 prophets named in the Qur'an, with localized names (ks→ur, prs→fa, sg→en).
+const PROPHETS = [
+  { en: "Adam", ar: "آدم", ur: "آدم", fa: "آدم", az: "Adəm", ms: "Adam" },
+  { en: "Idris", ar: "إدريس", ur: "ادریس", fa: "ادریس", az: "İdris", ms: "Idris" },
+  { en: "Nuh", ar: "نوح", ur: "نوح", fa: "نوح", az: "Nuh", ms: "Nuh" },
+  { en: "Hud", ar: "هود", ur: "ہود", fa: "هود", az: "Hud", ms: "Hud" },
+  { en: "Salih", ar: "صالح", ur: "صالح", fa: "صالح", az: "Saleh", ms: "Soleh" },
+  { en: "Ibrahim", ar: "إبراهيم", ur: "ابراہیم", fa: "ابراهیم", az: "İbrahim", ms: "Ibrahim" },
+  { en: "Lut", ar: "لوط", ur: "لوط", fa: "لوط", az: "Lut", ms: "Lut" },
+  { en: "Ismail", ar: "إسماعيل", ur: "اسماعیل", fa: "اسماعیل", az: "İsmayıl", ms: "Ismail" },
+  { en: "Ishaq", ar: "إسحاق", ur: "اسحاق", fa: "اسحاق", az: "İshaq", ms: "Ishaq" },
+  { en: "Yaqub", ar: "يعقوب", ur: "یعقوب", fa: "یعقوب", az: "Yaqub", ms: "Yaakub" },
+  { en: "Yusuf", ar: "يوسف", ur: "یوسف", fa: "یوسف", az: "Yusif", ms: "Yusuf" },
+  { en: "Ayyub", ar: "أيوب", ur: "ایوب", fa: "ایوب", az: "Əyyub", ms: "Ayub" },
+  { en: "Shuayb", ar: "شعيب", ur: "شعیب", fa: "شعیب", az: "Şüeyb", ms: "Syuaib" },
+  { en: "Musa", ar: "موسى", ur: "موسیٰ", fa: "موسی", az: "Musa", ms: "Musa" },
+  { en: "Harun", ar: "هارون", ur: "ہارون", fa: "هارون", az: "Harun", ms: "Harun" },
+  { en: "Dhul-Kifl", ar: "ذو الكفل", ur: "ذوالکفل", fa: "ذوالکفل", az: "Zülkifl", ms: "Zulkifli" },
+  { en: "Dawud", ar: "داود", ur: "داؤد", fa: "داوود", az: "Davud", ms: "Daud" },
+  { en: "Sulayman", ar: "سليمان", ur: "سلیمان", fa: "سلیمان", az: "Süleyman", ms: "Sulaiman" },
+  { en: "Ilyas", ar: "إلياس", ur: "الیاس", fa: "الیاس", az: "İlyas", ms: "Ilyas" },
+  { en: "Al-Yasa", ar: "اليسع", ur: "الیسع", fa: "الیسع", az: "Əlyəsə", ms: "Alyasa" },
+  { en: "Yunus", ar: "يونس", ur: "یونس", fa: "یونس", az: "Yunus", ms: "Yunus" },
+  { en: "Zakariyya", ar: "زكريا", ur: "زکریا", fa: "زکریا", az: "Zəkəriyya", ms: "Zakaria" },
+  { en: "Yahya", ar: "يحيى", ur: "یحییٰ", fa: "یحیی", az: "Yəhya", ms: "Yahya" },
+  { en: "Isa", ar: "عيسى", ur: "عیسیٰ", fa: "عیسی", az: "İsa", ms: "Isa" },
+  { en: "Muhammad ﷺ", ar: "محمد ﷺ", ur: "محمد ﷺ", fa: "محمد ﷺ", az: "Məhəmməd ﷺ", ms: "Muhammad ﷺ" },
+];
+// The Twelve Imams of the Ahl al-Bait, with localized names.
+const IMAMS = [
+  { en: "Ali ibn Abi Talib", ar: "علي بن أبي طالب", ur: "علی ابن ابی طالب", fa: "علی ابن ابی‌طالب", az: "Əli ibn Əbu Talib", ms: "Ali ibn Abi Talib" },
+  { en: "Hasan al-Mujtaba", ar: "الحسن المجتبى", ur: "حسن المجتبیٰ", fa: "حسن مجتبیٰ", az: "Həsən Müctəba", ms: "Hasan al-Mujtaba" },
+  { en: "Husayn ibn Ali", ar: "الحسين بن علي", ur: "حسین ابن علی", fa: "حسین ابن علی", az: "Hüseyn ibn Əli", ms: "Husain ibn Ali" },
+  { en: "Ali Zayn al-Abidin", ar: "علي زين العابدين", ur: "علی زین العابدین", fa: "علی زین‌العابدین", az: "Əli Zeynalabidin", ms: "Ali Zainul Abidin" },
+  { en: "Muhammad al-Baqir", ar: "محمد الباقر", ur: "محمد الباقر", fa: "محمد باقر", az: "Məhəmməd Baqir", ms: "Muhammad al-Baqir" },
+  { en: "Jafar al-Sadiq", ar: "جعفر الصادق", ur: "جعفر الصادق", fa: "جعفر صادق", az: "Cəfər Sadiq", ms: "Jaafar as-Sadiq" },
+  { en: "Musa al-Kazim", ar: "موسى الكاظم", ur: "موسیٰ الکاظم", fa: "موسی کاظم", az: "Musa Kazim", ms: "Musa al-Kazim" },
+  { en: "Ali al-Rida", ar: "علي الرضا", ur: "علی الرضا", fa: "علی رضا", az: "Əli Rza", ms: "Ali ar-Ridha" },
+  { en: "Muhammad al-Jawad", ar: "محمد الجواد", ur: "محمد الجواد", fa: "محمد جواد", az: "Məhəmməd Cavad", ms: "Muhammad al-Jawad" },
+  { en: "Ali al-Hadi", ar: "علي الهادي", ur: "علی الہادی", fa: "علی هادی", az: "Əli Hadi", ms: "Ali al-Hadi" },
+  { en: "Hasan al-Askari", ar: "الحسن العسكري", ur: "حسن العسکری", fa: "حسن عسکری", az: "Həsən Əsgəri", ms: "Hasan al-Askari" },
+  { en: "Muhammad al-Mahdi", ar: "محمد المهدي", ur: "محمد المہدی", fa: "محمد مهدی", az: "Məhəmməd Mehdi", ms: "Muhammad al-Mahdi" },
+];
+// Children of the Prophet Muhammad ﷺ (s: honorific ع — Fatimah al-Zahra, of the Ahl al-Bait).
+const CHILDREN = [
+  { en: "Qasim ibn Muhammad", ar: "القاسم بن محمد", ur: "قاسم بن محمد", fa: "قاسم بن محمد", az: "Qasim ibn Muhammad", ms: "Qasim ibn Muhammad" },
+  { en: "Zainab bint Muhammad", ar: "زينب بنت محمد", ur: "زینب بنت محمد", fa: "زینب بنت محمد", az: "Zeynəb bint Muhammad", ms: "Zainab binti Muhammad" },
+  { en: "Ruqayyah bint Muhammad", ar: "رقية بنت محمد", ur: "رقیہ بنت محمد", fa: "رقیه بنت محمد", az: "Rüqəyyə bint Muhammad", ms: "Ruqayyah binti Muhammad" },
+  { en: "Umm Kulthum bint Muhammad", ar: "أم كلثوم بنت محمد", ur: "ام کلثوم بنت محمد", fa: "ام کلثوم بنت محمد", az: "Ümmü Gülsüm bint Muhammad", ms: "Ummu Kalthum binti Muhammad" },
+  { en: "Fatimah al-Zahra bint Muhammad", ar: "فاطمة الزهراء بنت محمد", ur: "فاطمہ الزہرا بنت محمد", fa: "فاطمه زهرا بنت محمد", az: "Fatimə Zəhra bint Muhammad", ms: "Fatimah az-Zahra binti Muhammad" },
+  { en: "Abdullah ibn Muhammad", ar: "عبد الله بن محمد", ur: "عبداللہ بن محمد", fa: "عبدالله بن محمد", az: "Abdullah ibn Muhammad", ms: "Abdullah ibn Muhammad" },
+  { en: "Ibrahim ibn Muhammad", ar: "إبراهيم بن محمد", ur: "ابراہیم بن محمد", fa: "ابراهیم بن محمد", az: "İbrahim ibn Muhammad", ms: "Ibrahim ibn Muhammad" },
+];
+// Documented, named wives of the prophets (Khadijah — wife of the Prophet ﷺ — first),
+// including the Mothers of the Believers and the wives of Ibrahim.
+const WIVES = [
+  { en: "Khadijah bint Khuwaylid", ar: "خديجة بنت خويلد", ur: "خدیجہ بنت خویلد", fa: "خدیجه بنت خویلد", az: "Xədicə bint Xüveylid", ms: "Khadijah binti Khuwailid", of: "Muhammad ﷺ" },
+  { en: "Sawda bint Zam'a", ar: "سودة بنت زمعة", ur: "سودہ بنت زمعہ", fa: "سوده بنت زمعه", az: "Sevdə bint Zəmə", ms: "Saudah binti Zam'ah", of: "Muhammad ﷺ" },
+  { en: "Aisha bint Abi Bakr", ar: "عائشة بنت أبي بكر", ur: "عائشہ بنت ابی بکر", fa: "عایشه بنت ابی‌بکر", az: "Ayşə bint Əbu Bəkr", ms: "Aisyah binti Abu Bakar", of: "Muhammad ﷺ" },
+  { en: "Hafsa bint Umar", ar: "حفصة بنت عمر", ur: "حفصہ بنت عمر", fa: "حفصه بنت عمر", az: "Həfsə bint Ömər", ms: "Hafsah binti Umar", of: "Muhammad ﷺ" },
+  { en: "Zaynab bint Khuzayma", ar: "زينب بنت خزيمة", ur: "زینب بنت خزیمہ", fa: "زینب بنت خزیمه", az: "Zeynəb bint Xüzeymə", ms: "Zainab binti Khuzaimah", of: "Muhammad ﷺ" },
+  { en: "Umm Salama bint Abi Umayya", ar: "أم سلمة بنت أبي أمية", ur: "ام سلمہ بنت ابی امیہ", fa: "ام سلمه بنت ابی‌امیه", az: "Ümmü Sələmə bint Əbu Üməyyə", ms: "Ummu Salamah binti Abu Umayyah", of: "Muhammad ﷺ" },
+  { en: "Zaynab bint Jahsh", ar: "زينب بنت جحش", ur: "زینب بنت جحش", fa: "زینب بنت جحش", az: "Zeynəb bint Cəhş", ms: "Zainab binti Jahsy", of: "Muhammad ﷺ" },
+  { en: "Juwayriya bint al-Harith", ar: "جويرية بنت الحارث", ur: "جویریہ بنت الحارث", fa: "جویریه بنت الحارث", az: "Cüveyriyə bint Haris", ms: "Juwairiyah binti al-Harith", of: "Muhammad ﷺ" },
+  { en: "Umm Habiba bint Abi Sufyan", ar: "أم حبيبة بنت أبي سفيان", ur: "ام حبیبہ بنت ابی سفیان", fa: "ام حبیبه بنت ابی‌سفیان", az: "Ümmü Həbibə bint Əbu Süfyan", ms: "Ummu Habibah binti Abu Sufyan", of: "Muhammad ﷺ" },
+  { en: "Safiyya bint Huyayy", ar: "صفية بنت حيي", ur: "صفیہ بنت حیی", fa: "صفیه بنت حیی", az: "Səfiyyə bint Hüyəy", ms: "Safiyah binti Huyai", of: "Muhammad ﷺ" },
+  { en: "Maymunah bint al-Harith", ar: "ميمونة بنت الحارث", ur: "میمونہ بنت الحارث", fa: "میمونه بنت الحارث", az: "Meymunə bint Haris", ms: "Maimunah binti al-Harith", of: "Muhammad ﷺ" },
+  { en: "Maria al-Qibtiyya", ar: "مارية القبطية", ur: "ماریہ قبطیہ", fa: "ماریه قبطیه", az: "Mariyə Qibtiyyə", ms: "Mariah al-Qibtiyah", of: "Muhammad ﷺ" },
+  { en: "Hawwa", ar: "حواء", ur: "حوا", fa: "حوا", az: "Həvva", ms: "Hawa", of: "Adam" },
+  { en: "Sarah", ar: "سارة", ur: "سارہ", fa: "ساره", az: "Sara", ms: "Sarah", of: "Ibrahim" },
+  { en: "Hajar", ar: "هاجر", ur: "ہاجرہ", fa: "هاجر", az: "Hacər", ms: "Hajar", of: "Ibrahim" },
+  { en: "Qantura", ar: "قنطورا", ur: "قنطورا", fa: "قنطورا", az: "Qantura", ms: "Qantura", of: "Ibrahim" },
+  { en: "Rafqah", ar: "رفقة", ur: "رفقہ", fa: "رفقه", az: "Rifqə", ms: "Rafqah", of: "Ishaq" },
+  { en: "Rahil", ar: "راحيل", ur: "راحیل", fa: "راحیل", az: "Rahil", ms: "Rahil", of: "Yaqub" },
+  { en: "Layya", ar: "ليا", ur: "لیا", fa: "لیا", az: "Leya", ms: "Layya", of: "Yaqub" },
+  { en: "Rahmah", ar: "رحمة", ur: "رحمہ", fa: "رحمه", az: "Rəhmə", ms: "Rahmah", of: "Ayyub" },
+  { en: "Safura", ar: "صفورا", ur: "صفورہ", fa: "صفورا", az: "Səfura", ms: "Safura", of: "Musa" },
+  { en: "Bilqis", ar: "بلقيس", ur: "بلقیس", fa: "بلقیس", az: "Bilqis", ms: "Balqis", of: "Sulayman" },
+  { en: "Isha", ar: "إيشاع", ur: "ایشاع", fa: "ایشاع", az: "İşa", ms: "Isya", of: "Zakariyya" },
+];
+// Other notable women mentioned in Islam / the Qur'an (Maryam — mother of Isa — carries ع).
+const WOMEN = [
+  { en: "Maryam", ar: "مريم", ur: "مریم", fa: "مریم", az: "Məryəm", ms: "Maryam", of: "mother of Isa", s: true },
+  { en: "Asiya", ar: "آسية", ur: "آسیہ", fa: "آسیه", az: "Asiyə", ms: "Asiah", of: "believing wife of Pharaoh" },
+  { en: "Hannah", ar: "حنة", ur: "حنہ", fa: "حنه", az: "Hənnə", ms: "Hannah", of: "mother of Maryam" },
+  { en: "Umm Musa", ar: "أم موسى", ur: "ام موسیٰ", fa: "ام موسی", az: "Ümmü Musa", ms: "Ummu Musa", of: "mother of Musa" },
+  { en: "Zulaykha", ar: "زليخا", ur: "زلیخا", fa: "زلیخا", az: "Züleyxa", ms: "Zulaikha", of: "in the story of Yusuf" },
+  { en: "Khawla", ar: "خولة", ur: "خولہ", fa: "خوله", az: "Xövlə", ms: "Khaulah", of: "al-Mujadila" },
+  { en: "Umm Ayman", ar: "أم أيمن", ur: "ام ایمن", fa: "ام ایمن", az: "Ümmü Əymən", ms: "Ummu Aiman", of: "companion of the Prophet ﷺ" },
+];
+// Righteous men — companions of the Prophet ﷺ & the Imams, and early Shia scholars.
+const MEN = [
+  ["Salman al-Farsi", "سلمان الفارسي"],
+  ["Abu Dharr al-Ghifari", "أبو ذر الغفاري"],
+  ["Miqdad ibn al-Aswad", "المقداد بن الأسود"],
+  ["Ammar ibn Yasir", "عمار بن ياسر"],
+  ["Bilal ibn Rabah", "بلال بن رباح"],
+  ["Uways al-Qarani", "أويس القرني"],
+  ["Hudhayfah ibn al-Yaman", "حذيفة بن اليمان"],
+  ["Abu Ayyub al-Ansari", "أبو أيوب الأنصاري"],
+  ["Jabir ibn Abd Allah al-Ansari", "جابر بن عبد الله الأنصاري"],
+  ["Malik al-Ashtar", "مالك الأشتر"],
+  ["Kumayl ibn Ziyad", "كميل بن زياد"],
+  ["Maytham al-Tammar", "ميثم التمار"],
+  ["Rashid al-Hijri", "رشيد الهجري"],
+  ["Qanbar", "قنبر"],
+  ["Hujr ibn Adi", "حجر بن عدي"],
+  ["Muslim ibn Aqil", "مسلم بن عقيل"],
+  ["Habib ibn Muzahir", "حبيب بن مظاهر"],
+  ["Zuhayr ibn al-Qayn", "زهير بن القين"],
+  ["Burayr ibn Khudayr", "بریر بن خضیر"],
+  ["Hurr ibn Yazid al-Riyahi", "الحر بن يزيد الرياحي"],
+  ["John ibn Huwayy", "جون بن حوي"],
+  ["Mukhtar al-Thaqafi", "المختار الثقفي"],
+  ["Ali ibn Yaqtin", "علي بن يقطين"],
+  ["Hisham ibn al-Hakam", "هشام بن الحكم"],
+  ["Zurarah ibn Ayan", "زرارة بن أعين"],
+  ["Muhammad ibn Muslim", "محمد بن مسلم"],
+  ["Aban ibn Taghlib", "أبان بن تغلب"],
+  ["Al-Fadl ibn Shadhan", "الفضل بن شاذان"],
+  ["Al-Shaykh al-Mufid", "الشيخ المفيد"],
+  ["Al-Sharif al-Murtada", "الشريف المرتضى"],
+  ["Al-Shaykh al-Tusi", "الشيخ الطوسي"],
+].map(([en, ar]) => ({ en, ar, ur: ar, fa: ar, az: en, ms: en }));
+const prophetName = (p) => (p && (p[QUIZ_LANG()] || p.en)) || "";
+
+// salamMode: "all" (every name), "allButLast" (all except the last), or "flag" (only items with s:true)
+function storyBoxes(list, opener, salamMode) {
+  return list.map((p, i) => {
+    const salam = salamMode === "all" ? true
+      : salamMode === "allButLast" ? (i < list.length - 1)
+      : !!p.s;
+    return `
+    <button class="story-box" data-i="${i + 1}" onclick="${opener}(${i})">
+      <span class="story-num">${i + 1}</span>
+      <span class="story-name">${prophetName(p)}${salam ? `<span class="story-salam">ع</span>` : ""}</span>
+    </button>`;
   }).join("");
-  v.innerHTML = head("m_ahl", "m_ahl_d") + `
-    <div class="card" style="margin-bottom:18px;text-align:center">
-      <div class="ayah" style="font-family:Amiri,serif;font-size:26px;color:var(--text-0);direction:rtl">اللّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ وَآلِ مُحَمَّد</div>
-      <p style="color:var(--text-1);margin-top:8px">${localizedText("The Fourteen Infallibles (peace be upon them all)")}</p>
-    </div>${list}`;
 }
+function renderAhlulBayt(v) {
+  v.innerHTML = head("m_ahl_d") + `
+    <div id="storiesBody">
+      <div class="stories-cat">${localizedText("Prophets")}</div>
+      <div class="stories-scroll">${storyBoxes(PROPHETS, "openStory", "allButLast")}</div>
+      <div class="stories-cat">${localizedText("The Twelve Imams")}</div>
+      <div class="stories-scroll">${storyBoxes(IMAMS, "openImam", "all")}</div>
+      <div class="stories-cat">${localizedText("Righteous Men")}</div>
+      <div class="stories-scroll">${storyBoxes(MEN, "openMan", "none")}</div>
+      <div class="stories-cat">${localizedText("Children of the Prophet ﷺ")}</div>
+      <div class="stories-scroll">${storyBoxes(CHILDREN, "openChild", "flag")}</div>
+      <div class="stories-cat">${localizedText("Wives of the Prophets")}</div>
+      <div class="stories-scroll">${storyBoxes(WIVES, "openWife", "flag")}</div>
+      <div class="stories-cat">${localizedText("Women in Islam")}</div>
+      <div class="stories-scroll">${storyBoxes(WOMEN, "openWoman", "flag")}</div>
+    </div>`;
+}
+
+// A prophet / imam story opens in the slide-up reader sheet.
+function storyText(obj) {
+  if (!obj) return "";
+  const f = QUIZ_LANG();
+  return (obj[f] || obj.en || "");
+}
+function storyToHtml(txt, rtl) {
+  return String(txt).split(/\n\s*\n/).map((para) => {
+    const p = para.trim();
+    if (!p) return "";
+    return `<p style="margin:0 0 14px;line-height:1.95;color:var(--text-1);font-size:15px;${rtl ? "direction:rtl;text-align:right" : ""}">${escapeHtml(p)}</p>`;
+  }).join("");
+}
+function openStorySheet(name, withSalam, story) {
+  const backSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>';
+  const rtl = ARABIC_SCRIPT_LANGS.includes(State.lang);
+  const txt = storyText(story);
+  const bodyHtml = txt
+    ? `<div class="card story-read">${storyToHtml(txt, rtl)}</div>`
+    : `<div class="card" style="text-align:center;color:var(--text-2);padding:30px 18px">${localizedText("Story coming soon, insha’Allah.")}</div>`;
+  openQuranReader(`<div class="q-reader">
+    <div class="qr-topbar">
+      <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}">${backSvg}</button>
+      <span class="qr-title">${name}${withSalam ? '<span class="story-salam">ع</span>' : ""}</span>
+    </div>
+    <div class="qr-body">${bodyHtml}</div>
+  </div>`);
+}
+function openStory(i) {
+  const p = PROPHETS[i]; if (!p) return;
+  const story = (typeof PROPHET_STORIES !== "undefined") ? PROPHET_STORIES[i] : null;
+  openStorySheet(prophetName(p), i < PROPHETS.length - 1, story);
+}
+const _story = (v, i) => (typeof window[v] !== "undefined" && window[v][i]) ? window[v][i] : null;
+function openImam(i) { const p = IMAMS[i]; if (p) openStorySheet(prophetName(p), true, _story("IMAM_STORIES", i)); }
+function openMan(i) { const p = MEN[i]; if (p) openStorySheet(prophetName(p), false, _story("MEN_STORIES", i)); }
+function openChild(i) { const p = CHILDREN[i]; if (p) openStorySheet(prophetName(p), !!p.s, _story("CHILD_STORIES", i)); }
+function openWife(i) { const p = WIVES[i]; if (p) openStorySheet(prophetName(p), false, _story("WIFE_STORIES", i)); }
+function openWoman(i) { const p = WOMEN[i]; if (p) openStorySheet(prophetName(p), !!p.s, _story("WOMAN_STORIES", i)); }
 
 // ---------- AI ASSISTANT ----------
 function renderAI(v) {
@@ -1551,23 +3284,30 @@ async function renderLibrary(v) {
   v.innerHTML = head("m_library", "m_library_d") + `<div id="libBody"><div class="card">${t("loading_library")}</div></div>`;
   try {
     const d = await api("/hadith/books");
-    const cats = ["All", ...new Set(Object.values(BOOK_CAT))];
-    const chips = `<div class="chips">${cats.map((c) => `<span class="chip ${c === _libFilter ? "active" : ""}" onclick="setLibFilter('${c}')">${tcat(c)}</span>`).join("")}</div>`;
-    const books = d.books.filter((b) => _libFilter === "All" || BOOK_CAT[b.bookId] === _libFilter);
-    const grid = books.map((b) => {
+    const nCats = new Set(Object.values(BOOK_CAT)).size;
+    const hlibAr = { istibsar: "الاستبصار", tahdhib: "تهذيب الأحكام", mizan: "ميزان الحكمة", mustadrak: "مستدرك الوسائل", wasail: "وسائل الشيعة", bihar: "بحار الأنوار" };
+    const bookCards = d.books.map((b) => {
       const cat = BOOK_CAT[b.bookId] || "Hadith";
-      return `<div class="module-card" style="opacity:1;transform:none" onclick="${b.downloaded ? `go('hadith');setTimeout(()=>openBook('${b.bookId}'),60)` : `toast(t('downloading'))`}">
+      return `<div class="module-card" style="opacity:1;transform:none" onclick="${b.downloaded ? `openBook('${b.bookId}')` : `toast(t('downloading'))`}">
         <span class="glow" style="--accent:var(--royal)"></span>
-        <h3 style="font-size:15px">${disp(b.englishName || b.name, HADITH_AR[b.bookId] || b.name, t("nav_hadith"))}</h3>
+        <h3 style="font-size:15px">${disp(b.name, HADITH_AR[b.bookId] || b.name, t("nav_hadith"))}</h3>
         <p>${tcat(cat)} · ${b.count.toLocaleString()} ${t("narrations")}</p>
       </div>`;
     }).join("");
+    const hlibCards = HLIB_LIST.map((tk, i) => `<div class="module-card" style="opacity:1;transform:none" onclick="openHlib(${i})">
+        <span class="glow" style="--accent:var(--royal)"></span>
+        <h3 style="font-size:15px">${disp(tk.name, hlibAr[tk.slug] || tk.name, t("nav_hadith"))}</h3>
+        <p>${tcat("Hadith")} · ${(HLIB_NARR[tk.slug] || 0).toLocaleString()} ${t("narrations")}</p>
+      </div>`).join("");
+    const totalBooks = d.books.length + HLIB_LIST.length;
+    const totalNarr = d.books.reduce((a, b) => a + b.count, 0) + hlibNarrTotal();
     el("#libBody").innerHTML = `
-      <div class="stat-row">
-        <div class="stat"><div class="big">${d.books.length}</div><div class="lbl">${t("total_books")}</div></div>
-        <div class="stat"><div class="big">${d.books.reduce((a, b) => a + b.count, 0).toLocaleString()}</div><div class="lbl">${t("total_narr")}</div></div>
-        <div class="stat"><div class="big">${cats.length - 1}</div><div class="lbl">${t("categories")}</div></div>
-      </div>${chips}<div class="grid modules">${grid}</div>
+      <div class="lib-stats">
+        <div class="lib-stat"><span class="lib-stat-ic">${BOOKS_ICON}</span><div class="lib-stat-n">${totalBooks}</div><div class="lib-stat-l">${t("total_books")}</div></div>
+        <div class="lib-stat"><span class="lib-stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21c3 0 7-1 7-8V5H4v6h4"/><path d="M14 21c3 0 7-1 7-8V5h-6v6h4"/></svg></span><div class="lib-stat-n">${totalNarr.toLocaleString()}</div><div class="lib-stat-l">${t("total_narr")}</div></div>
+        <div class="lib-stat"><span class="lib-stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><div class="lib-stat-n">${nCats}</div><div class="lib-stat-l">${t("categories")}</div></div>
+      </div>
+      <div class="grid modules">${bookCards}${hlibCards}</div>
       <div class="page-head" style="margin-top:26px"><h1 style="font-size:18px">${t("pdf_library")}</h1><p>${t("pdf_sub")}</p></div>
       <div class="grid modules" id="pdfGrid"></div>`;
     loadPdfs();
@@ -1583,7 +3323,7 @@ async function loadPdfs() {
     el("#pdfGrid").innerHTML = d.pdfs.map((p) => `
       <div class="module-card" style="opacity:1;transform:none" onclick='openPdf(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
         <span class="glow" style="--accent:var(--plum)"></span>
-        <h3 style="font-size:15px">${localizedText(p.en)}</h3>
+        <h3 style="font-size:15px">${disp(p.en, p.ar || p.en, t("nav_hadith"))}</h3>
         <p>${localizedText(p.cat)} · ${localizedText(p.author)} · PDF${p.edition ? " · " + editionLabel(p.edition) : ""}</p>
       </div>`).join("");
   } catch { /* backend offline */ }
@@ -1598,8 +3338,7 @@ function openPdf(p) {
   }
   m.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;color:var(--text-0)">
-      <strong style="flex:1">📕 ${localizedText(p.en)} — ${localizedText(p.author)}</strong>
-      <a class="btn ghost" href="${p.url}" target="_blank" rel="noopener">⬇ ${t("download")}</a>
+      <strong style="flex:1">📕 ${disp(p.en, p.ar || p.en, t("nav_hadith"))} — ${localizedText(p.author)}</strong>
       <button class="btn" onclick="document.getElementById('pdfModal').remove()">✕</button>
     </div>
     <iframe src="${p.url}" style="flex:1;width:100%;border:none;border-radius:14px;background:var(--bg-0)"></iframe>`;
@@ -1672,16 +3411,16 @@ const LOCAL_BELIEFS = [
     a: "Tawhid is the absolute Oneness of Allah — One in His Essence, Attributes and actions, with no partner, equal or resemblance to creation. It is the first root of religion (Usul al-Din).",
     r: "Quran 112 (al-Ikhlas) · Nahj al-Balagha, Sermon 1 — Imam Ali (AS)." },
   { k: ["adl", "adalah", "divine justice", "justice"],
-    a: "ʿAdl means Divine Justice: Allah is absolutely just, never wrongs anyone and acts with wisdom. Humans have free will and are accountable for their deeds. It is the second root of religion.",
+    a: "Adl means Divine Justice: Allah is absolutely just, never wrongs anyone and acts with wisdom. Humans have free will and are accountable for their deeds. It is the second root of religion.",
     r: "Quran 4:40 — 'Indeed Allah does not wrong [anyone] by an atom's weight.'" },
   { k: ["nubuwwah", "nubuwwat", "prophethood", "prophet", "messenger", "risalah"],
-    a: "Nubuwwah is Prophethood: Allah sent prophets to guide humanity, from Adam (AS) to the final Messenger Muhammad (S). Prophets are infallible (maʿsum) in conveying the message.",
+    a: "Nubuwwah is Prophethood: Allah sent prophets to guide humanity, from Adam (AS) to the final Messenger Muhammad (S). Prophets are infallible (masum) in conveying the message.",
     r: "Quran 33:40 — 'Muhammad is the Messenger of Allah and the Seal of the Prophets.'" },
   { k: ["imamah", "imamat", "imam", "wilayah", "wilayat", "successor", "ghadir", "twelve imams", "ali"],
     a: "Imamah is the divinely-appointed leadership after the Prophet (S). The twelve Imams, from Imam Ali (AS) to Imam al-Mahdi (AJ), are appointed by Allah, infallible, and the authoritative guides of the religion.",
     r: "Quran 5:55 · Hadith al-Ghadir · Hadith al-Thaqalayn." },
   { k: ["ma'ad", "maad", "resurrection", "hereafter", "qiyamah", "day of judgment", "akhirah", "afterlife"],
-    a: "Maʿad is the Resurrection: every soul will be raised on the Day of Judgement and recompensed for its deeds — Paradise for the righteous, accountability for the wrongdoers. It is the fifth root of religion.",
+    a: "Maad is the Resurrection: every soul will be raised on the Day of Judgement and recompensed for its deeds — Paradise for the righteous, accountability for the wrongdoers. It is the fifth root of religion.",
     r: "Quran 99:7-8 — 'Whoever does an atom's weight of good or evil will see it.'" },
 ];
 const LOCAL_GREET = ["hi", "hello", "hey", "salam", "salaam", "assalam", "asalam", "marhaba", "greetings", "salamun"];
@@ -1710,7 +3449,7 @@ function localBrain(q) {
   if (LOCAL_RULING.some((t) => s.includes(t)))
     return { answer: "This concerns a religious ruling. Wilayat Chat does not issue fatwas - please consult your marja al-taqlid or a qualified scholar.", reference: "Quran 16:43 - Ask the people of remembrance if you do not know.", requires_scholar: true };
   if (words.length <= 3 && (words.some((w) => LOCAL_GREET.includes(w)) || ["salam", "salaam", "marhaba"].some((x) => s.includes(x))))
-    return { answer: "Wa ʿalaykum as-salam! I'm Wilayat Chat. Ask me about the Qur'an, the Ahlul Bayt (AS), duas, ziyarat or the core beliefs of Shia Islam.", reference: "Al-Wilayat" };
+    return { answer: "Wa alaykum as-salam! I'm Wilayat Chat. Ask me about the Qur'an, the Ahlul Bayt (AS), duas, ziyarat or the core beliefs of Shia Islam.", reference: "Al-Wilayat" };
   for (const st of LOCAL_SMALLTALK) if (st.k.some((t) => s.includes(t))) return { answer: st.a, reference: "Al-Wilayat" };
   for (const b of LOCAL_BELIEFS) if (b.k.some((t) => s.includes(t))) return { answer: b.a, reference: b.r };
   if (s.includes("knowledge") || s.includes("ilm"))
@@ -1743,24 +3482,72 @@ const SHIA_RE = /shi'?[ai]|ja'?fari|jaffari|husayn|hussain|husain|hosseini|imam\
 
 function renderCommunity(v) {
   v.innerHTML = head("m_community", "m_community_d") + `
-    <div class="card" style="margin-bottom:16px">
-      <div class="meta" style="margin-bottom:12px"><div class="t">🕌 ${t("mosque_locator")}</div>
-        <div class="s">${t("mosque_sub")}</div></div>
-      <button class="btn" onclick="findMosques()">📍 ${t("find_mosques")}</button>
-      <div id="mosqueResults" style="margin-top:12px"></div>
+    <div class="card info-card" style="margin-bottom:16px">
+      <div class="info-card-head">
+        <div class="info-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+        <div class="meta">
+          <div class="t">${t("mosque_locator")}</div>
+          <div class="s">${t("mosque_sub")}</div>
+        </div>
+      </div>
+      <button class="btn info-btn" onclick="findMosques()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        ${t("find_mosques")}
+      </button>
+      <div id="mosqueResults"></div>
     </div>
 
-    <div class="card">
-      <div class="meta" style="cursor:pointer" onclick="togglePrivacy()">
-        <div class="t">📜 ${t("license_privacy")}</div>
-        <div class="s">${t("license_privacy_sub")}</div></div>
-      <div id="privacyBody" style="display:none;margin-top:14px"></div>
+    <div class="card info-card">
+      <div class="info-card-head">
+        <div class="info-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <div class="meta">
+          <div class="t">${t("license_privacy")}</div>
+          <div class="s">${t("license_privacy_sub")}</div>
+        </div>
+      </div>
+      <button class="btn info-btn" onclick="openPrivacy()">${t("privacy_open")}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </button>
     </div>`;
 }
 
 // ---------- GLOBAL SEARCH (Quran · hadith · dua · ziyarat) ----------
 // Run from the top-bar search box: finds the exact line and related ones,
 // and every result jumps straight into the full surah / book / text.
+// Live suggestions: matching app sections listed as you type (first-letter first).
+function positionSuggest() {
+  const box = el("#searchSuggest"), bar = el(".search"); if (!box || !bar) return;
+  const r = bar.getBoundingClientRect();
+  box.style.left = r.left + "px"; box.style.top = (r.bottom + 8) + "px"; box.style.width = r.width + "px";
+}
+function searchGoto(route) {
+  el("#searchSuggest")?.classList.remove("open");
+  const inp = el(".search input"); if (inp) inp.value = "";
+  updateSearchMark();
+  go(route);
+}
+function searchSuggest(q) {
+  const box = el("#searchSuggest"); if (!box) return;
+  q = (q || "").trim().toLowerCase();
+  if (!q) { box.classList.remove("open"); box.innerHTML = ""; return; }
+  const items = NAV.map(([r, k]) => ({ r, name: t(k) }))
+    .filter((x) => x.name && x.name.toLowerCase().includes(q));
+  items.sort((a, b) => {
+    const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;   // first-letter matches on top
+    const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+    return ap - bp || a.name.localeCompare(b.name);
+  });
+  if (!items.length) { box.classList.remove("open"); box.innerHTML = ""; return; }
+  box.innerHTML = items.slice(0, 8).map((x) => `
+    <button class="ss-item" onmousedown="event.preventDefault()" onclick="searchGoto('${x.r}')">
+      <span class="ss-ic">${icon(x.r)}</span>
+      <span class="ss-name">${x.name}</span>
+      <span class="ss-go" aria-hidden="true">›</span>
+    </button>`).join("");
+  positionSuggest();
+  box.classList.add("open");
+}
+
 function globalSearch(q) {
   q = (q || "").trim();
   if (q.length < 2) return;
@@ -1916,13 +3703,13 @@ async function renderSearch(v) {
 // ----- Mosque locator (browser geolocation → OpenStreetMap Overpass) -----
 async function findMosques() {
   const box = el("#mosqueResults");
-  box.innerHTML = `<div class="s">📍 ${t("getting_loc")}</div>`;
+  box.innerHTML = `<div class="s status-line"><span class="stat-ic">${PIN_ICON}</span>${t("getting_loc")}</div>`;
   const c = State.coords || await getLocation(); // GPS → IP fallback
   if (!c) {
     box.innerHTML = `<div class="s">${t("no_loc")}</div>`;
     return;
   }
-  box.innerHTML = `<div class="s">🔎 ${t("searching_near")}</div>`;
+  box.innerHTML = `<div class="s status-line"><span class="stat-ic">${SEARCH_ICON}</span>${t("searching_near")}</div>`;
   queryMosques(c.lat, c.lng, box);
 }
 
@@ -1934,7 +3721,7 @@ const haversine = (la1, lo1, la2, lo2) => {
 };
 
 async function queryMosques(lat, lng, box) {
-  box.innerHTML = `<div class="s">🔎 ${t("searching")}</div>`;
+  box.innerHTML = `<div class="s status-line"><span class="stat-ic">${SEARCH_ICON}</span>${t("searching")}</div>`;
   const radius = 20000;
   const oql = `[out:json][timeout:25];(` +
     `node["amenity"="place_of_worship"]["religion"="muslim"](around:${radius},${lat},${lng});` +
@@ -2027,7 +3814,7 @@ const PRIVACY_TEXT = `
   Holy Qur'an and the teachings of the Ahlul Bayt (peace be upon them) — for learning,
   remembrance and devotion.</p>
   <p class="owner">
-    <span><strong>Al-Wilayat</strong> is an app powered by Aiba Dynamics Company.</span>
+    <span><strong>Al-Wilayat</strong> is an app powered by Aeba.</span>
     <span>Developer: Sayed Muhammad Hafeez.</span>
     <span>South Asia's first Shia Islamic library app, built for users around the world.</span>
     <span>Origin/Country: Pakistan.</span>
@@ -2041,7 +3828,7 @@ const PRIVACY_TEXT = `
     translators and publishers.</li>
     <li>The app is offered <strong>"as is"</strong>, with no warranty. It is a study aid, not a source
     of religious rulings (fatwa) — always confirm matters of practice with a qualified scholar or
-    your marjaʿ al-taqlid.</li>
+    your marja al-taqlid.</li>
     <li>Please use it respectfully, in a manner befitting its sacred content.</li>
   </ul>
 
@@ -2053,7 +3840,7 @@ const PRIVACY_TEXT = `
     <li><strong>Learning only</strong> — the app provides Qur'an, hadith, dua, ziyarat, tafsir and
     reference tools for study and devotion. It does not replace scholars.</li>
     <li><strong>No fatwa</strong> — AI answers and search results are for guidance with references only.
-    For religious rulings, follow your marjaʿ al-taqlid or a qualified scholar.</li>
+    For religious rulings, follow your marja al-taqlid or a qualified scholar.</li>
     <li><strong>Check references</strong> — users must verify important narrations, translations and
     rulings before acting on them.</li>
     <li><strong>Location features</strong> — Qibla, prayer times and mosque search need your permission
@@ -2068,59 +3855,45 @@ const PRIVACY_LOCALIZED = {
   ar: {
     title: "📖 الهدف والترخيص",
     body: "الولاية تطبيق مجاني غير تجاري للتعلّم والذكر والخدمة الدينية، يجمع القرآن والحديث والأدعية والزيارات والتفسير وأدوات القبلة والصلاة.",
-    owner: ["الولاية تطبيق بدعم شركة Aiba Dynamics.", "المطوّر: Sayed Muhammad Hafeez.", "أول مكتبة/تطبيق شيعي إسلامي في جنوب آسيا للمستخدمين حول العالم.", "المنشأ/الدولة: باكستان."],
+    owner: ["الولاية تطبيق بدعم شركة Aeba.", "المطوّر: Sayed Muhammad Hafeez.", "أول مكتبة/تطبيق شيعي إسلامي في جنوب آسيا للمستخدمين حول العالم.", "المنشأ/الدولة: باكستان."],
     rulesTitle: "⚖️ القواعد والخصوصية",
     rules: ["استخدم المحتوى المقدّس باحترام ولا تسئ استخدامه.", "التطبيق للتعلّم والعبادة ولا يحل محل العلماء أو المرجع.", "الذكاء الاصطناعي والبحث يقدمان مراجع فقط ولا يصدران فتاوى.", "ميزات الموقع مثل القبلة والصلاة والمساجد تحتاج إذن الموقع، وقد تكون تقريبية بدونه.", "الإعجابات والتفضيلات تُحفظ في هذا المتصفح فقط ويمكن حذفها بمسح بيانات المتصفح."]
   },
   ur: {
     title: "📖 مقصد اور لائسنس",
     body: "الولایت ایک مفت غیر تجارتی ایپ ہے جو قرآن، حدیث، دعاؤں، زیارات، تفسیر، قبلہ، نماز اوقات اور اسلامی تعلیمی اوزار کو احترام کے ساتھ پیش کرتی ہے۔",
-    owner: ["Al-Wilayat ایپ Aiba Dynamics Company کے ذریعے powered ہے۔", "Developer: Sayed Muhammad Hafeez.", "جنوبی ایشیا کی پہلی شیعہ اسلامی لائبریری/ایپ، دنیا بھر کے صارفین کے لیے۔", "Origin/Country: Pakistan."],
+    owner: ["Al-Wilayat ایپ Aeba کے ذریعے powered ہے۔", "Developer: Sayed Muhammad Hafeez.", "جنوبی ایشیا کی پہلی شیعہ اسلامی لائبریری/ایپ، دنیا بھر کے صارفین کے لیے۔", "Origin/Country: Pakistan."],
     rulesTitle: "⚖️ اصول اور رازداری",
     rules: ["مقدس مواد کو احترام سے استعمال کریں۔", "ایپ تعلیم اور عبادت کے لیے ہے، علماء یا مرجع کا بدل نہیں۔", "AI اور سرچ صرف حوالہ دیتے ہیں، فتویٰ نہیں دیتے۔", "قبلہ، نماز اوقات اور مسجد تلاش کے لیے مقام کی اجازت درکار ہو سکتی ہے۔", "پسندیدگیاں اور ترجیحات صرف اسی براؤزر میں محفوظ رہتی ہیں۔"]
   },
   fa: {
     title: "📖 هدف و مجوز",
     body: "الولایت یک برنامه رایگان و غیرتجاری برای آموزش، ذکر و استفاده دینی است و قرآن، حدیث، دعا، زیارت، تفسیر، قبله، اوقات نماز و ابزارهای یادگیری را فراهم می‌کند.",
-    owner: ["Al-Wilayat برنامه‌ای با پشتیبانی شرکت Aiba Dynamics است.", "توسعه‌دهنده: Sayed Muhammad Hafeez.", "نخستین کتابخانه/برنامه اسلامی شیعه در جنوب آسیا برای کاربران جهان.", "منشأ/کشور: پاکستان."],
+    owner: ["Al-Wilayat برنامه‌ای با پشتیبانی شرکت Aeba است.", "توسعه‌دهنده: Sayed Muhammad Hafeez.", "نخستین کتابخانه/برنامه اسلامی شیعه در جنوب آسیا برای کاربران جهان.", "منشأ/کشور: پاکستان."],
     rulesTitle: "⚖️ قوانین و حریم خصوصی",
     rules: ["با محتوای مقدس با احترام برخورد کنید.", "برنامه برای آموزش و عبادت است و جایگزین عالم یا مرجع نیست.", "AI و جستجو فقط با مرجع کمک می‌کنند و فتوا نمی‌دهند.", "قبله، اوقات نماز و مسجد‌یاب برای دقت به اجازه موقعیت نیاز دارند.", "پسندها و تنظیمات فقط در همین مرورگر ذخیره می‌شوند."]
   },
   az: {
     title: "📖 Məqsəd və lisenziya",
     body: "Al-Wilayat pulsuz və qeyri-kommersiya tətbiqidir. Quran, hədis, dua, ziyarət, təfsir, qiblə, namaz vaxtları və İslami öyrənmə alətlərini hörmətlə təqdim edir.",
-    owner: ["Al-Wilayat Aiba Dynamics Company tərəfindən dəstəklənən tətbiqdir.", "Tərtibatçı: Sayed Muhammad Hafeez.", "Cənubi Asiyanın dünyadakı istifadəçilər üçün ilk Şiə İslami kitabxana/tətbiqi.", "Mənşə/ölkə: Pakistan."],
+    owner: ["Al-Wilayat Aeba tərəfindən dəstəklənən tətbiqdir.", "Tərtibatçı: Sayed Muhammad Hafeez.", "Cənubi Asiyanın dünyadakı istifadəçilər üçün ilk Şiə İslami kitabxana/tətbiqi.", "Mənşə/ölkə: Pakistan."],
     rulesTitle: "⚖️ Qaydalar və məxfilik",
     rules: ["Müqəddəs məzmunu hörmətlə istifadə edin.", "Tətbiq öyrənmə və ibadət üçündür, alim və ya mərceyi əvəz etmir.", "AI və axtarış yalnız istinadlı kömək verir, fətva vermir.", "Qiblə, namaz vaxtları və məscid axtarışı üçün məkan icazəsi lazım ola bilər.", "Bəyənmələr və seçimlər yalnız bu brauzerdə saxlanılır."]
   },
   ks: {
     title: "📖 مقصد تہٕ لائسنس",
     body: "Al-Wilayat اکھ مفت تہٕ غیر تجارتی ایپ چھ، یتھ منز قرآن، حدیث، دعا، زیارت، تفسیر، قبلہ، نماز وقت تہٕ اسلامی سیکھنک اوزار چھ۔",
-    owner: ["Al-Wilayat ایپ Aiba Dynamics Company سۭتۍ powered چھ۔", "Developer: Sayed Muhammad Hafeez.", "جنوبی ایشیاک گوڈنیک شیعہ اسلامی لائبریری/ایپ، دنیا بھر صارفن خٲطرٕ۔", "Origin/Country: Pakistan."],
+    owner: ["Al-Wilayat ایپ Aeba سۭتۍ powered چھ۔", "Developer: Sayed Muhammad Hafeez.", "جنوبی ایشیاک گوڈنیک شیعہ اسلامی لائبریری/ایپ، دنیا بھر صارفن خٲطرٕ۔", "Origin/Country: Pakistan."],
     rulesTitle: "⚖️ قاعدہ تہٕ رازداری",
     rules: ["مقدس مواد عزت سۭتۍ استعمال کرو۔", "ایپ سیکھن تہٕ عبادت خٲطرٕ چھ، عالم یا مرجعک بدل نہٕ۔", "AI تہٕ تلاش صرف حوالہ دیتھ مدد کران، فتویٰ نہٕ۔", "قبلہ، نماز وقت تہٕ مسجد تلاش خٲطرٕ مقام اجازت ضرورت پزِ۔", "پسند تہٕ ترجیح صرف یتھ براؤزر منز محفوظ چھ۔"]
-  },
-  prs: {
-    title: "📖 هدف و جواز",
-    body: "Al-Wilayat یک برنامه رایگان و غیرتجاری برای آموزش و عبادت است و قرآن، حدیث، دعا، زیارت، تفسیر، قبله، اوقات نماز و ابزارهای اسلامی را فراهم می‌کند.",
-    owner: ["Al-Wilayat برنامه‌ای با پشتیبانی شرکت Aiba Dynamics است.", "توسعه‌دهنده: Sayed Muhammad Hafeez.", "اولین کتابخانه/برنامه اسلامی شیعه در جنوب آسیا برای کاربران جهان.", "منشأ/کشور: پاکستان."],
-    rulesTitle: "⚖️ قوانین و حریم خصوصی",
-    rules: ["محتوای مقدس را با احترام استفاده کنید.", "برنامه برای آموزش و عبادت است و جای عالم یا مرجع را نمی‌گیرد.", "AI و جستجو فقط مرجع می‌دهند و فتوا صادر نمی‌کنند.", "قبله، اوقات نماز و مسجد‌یاب برای دقت به اجازه موقعیت نیاز دارند.", "پسندها و ترجیحات فقط در همین مرورگر ذخیره می‌شوند."]
   },
   ms: {
     title: "📖 Tujuan & Lesen",
     body: "Al-Wilayat ialah aplikasi percuma dan bukan komersial untuk pembelajaran, zikir dan ibadah. Ia menyediakan Quran, hadis, doa, ziarah, tafsir, kiblat, waktu solat dan alat pembelajaran Islam.",
-    owner: ["Al-Wilayat ialah aplikasi yang dikuasakan oleh Aiba Dynamics Company.", "Pembangun: Sayed Muhammad Hafeez.", "Perpustakaan/aplikasi Islam Syiah pertama di Asia Selatan untuk pengguna seluruh dunia.", "Asal/Negara: Pakistan."],
+    owner: ["Al-Wilayat ialah aplikasi yang dikuasakan oleh Aeba.", "Pembangun: Sayed Muhammad Hafeez.", "Perpustakaan/aplikasi Islam Syiah pertama di Asia Selatan untuk pengguna seluruh dunia.", "Asal/Negara: Pakistan."],
     rulesTitle: "⚖️ Peraturan & Privasi",
     rules: ["Gunakan kandungan suci dengan hormat.", "Aplikasi ini untuk pembelajaran dan ibadah, bukan pengganti ulama atau marja.", "AI dan carian hanya memberi bantuan berserta rujukan, bukan fatwa.", "Kiblat, waktu solat dan pencari masjid mungkin memerlukan izin lokasi.", "Suka dan pilihan disimpan hanya dalam pelayar ini."]
   },
-  sg: {
-    title: "📖 Purpose & License",
-    body: "Al-Wilayat is a free, non-commercial app for learning, remembrance and worship, with Quran, hadith, duas, ziyarat, tafsir, Qibla, prayer times and Islamic learning tools.",
-    owner: ["Al-Wilayat is powered by Aiba Dynamics Company.", "Developer: Sayed Muhammad Hafeez.", "South Asia's first Shia Islamic library/app for users around the world.", "Origin/Country: Pakistan."],
-    rulesTitle: "⚖️ Rules & Privacy",
-    rules: ["Use sacred content respectfully.", "The app is for learning and worship, not a replacement for scholars or your marja.", "AI and search provide referenced help only, not fatwas.", "Qibla, prayer times and mosque search may need location permission.", "Likes and preferences stay only in this browser."]
-  }
 };
 
 function privacyHtml() {
@@ -2135,11 +3908,20 @@ function privacyHtml() {
     <ul>${c.rules.map((x) => `<li>${x}</li>`).join("")}</ul>`;
 }
 
-function togglePrivacy() {
-  const b = el("#privacyBody");
-  const opening = b.style.display === "none";
-  b.style.display = opening ? "block" : "none";
-  if (opening && !b.innerHTML.trim()) b.innerHTML = privacyHtml();
+// App Info & Privacy opens as a slide-up reader sheet (bottom → top), same as the Quran/tafsir reader.
+function openPrivacy() {
+  const dir = ARABIC_SCRIPT_LANGS.includes(State.lang) ? "rtl" : "ltr";
+  const html = `
+    <div class="q-reader">
+      <div class="qr-topbar">
+        <button class="dua-back" onclick="history.back()" aria-label="${localizedText("Back")}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="qr-title">${t("license_privacy")}</span>
+      </div>
+      <div class="qr-body" dir="${dir}">
+        <div id="privacyBody">${privacyHtml()}</div>
+      </div>
+    </div>`;
+  openQuranReader(html);
 }
 
 // ---------- MEDIA ----------
@@ -2222,11 +4004,23 @@ const ICONS = {
   qibla: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
   calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>',
   ahlulbayt: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  ahlquran: '<path d="M12 3 4 7v6c0 4 3.4 6.9 8 8 4.6-1.1 8-4 8-8V7z"/><path d="M12 8v6"/><path d="M9 11h6"/>',
+  events: '<rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 15 1.5 1.5L14 13"/>',
+  journey: '<path d="M9 6l11 -2v12l-11 2z"/><path d="M9 6l-5 2v12l5 -2"/><path d="M9 6v14"/><path d="M15 4v12"/>',
+  proofs: '<path d="M9 12l2 2 4-4"/><path d="M21 12c-1 0-3-1-3-3s2-3 3-3-1-2-3-2-3 2-3 2-1-2-3-2-3 1-3 2 2 1 2 3-2 3-3 3 1 2 3 2 3-2 3-2 1 2 3 2 3-1 3-2z"/>',
+  science: '<path d="M9 3h6"/><path d="M10 3v6.5L5.2 18a2 2 0 0 0 1.8 3h10a2 2 0 0 0 1.8-3L14 9.5V3"/><path d="M7.5 15h9"/>',
+  life: '<path d="M22 12h-4l-3 8L9 4l-3 8H2"/>',
+  tafsir: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h8"/><path d="M8 11h5"/>',
+  holy: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M11 2v6l2-1.3L15 8V2"/>',
   library: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M9.5 2v7l2.5-1.6L14.5 9V2"/>',
   community: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   tasbih: '<circle cx="12" cy="13" r="8"/><circle cx="12" cy="3" r="1.6" fill="currentColor" stroke="none"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  explore: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+  mahdi: '<path d="M4 22V4a1 1 0 0 1 1-1h14l-3 5 3 5H6"/><line x1="4" y1="22" x2="4" y2="15"/>',
+  progress: '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+  latmiya: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
 
@@ -2234,24 +4028,39 @@ const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 // rest live in the Settings sheet. The sidebar (desktop) shows them all.
 const NAV = [
   ["home", "nav_home", true], ["quran", "nav_quran", true], ["hadith", "nav_hadith", true],
-  ["ziyarat", "nav_ziyarat", true], ["dua", "nav_dua", true],
+  ["tafsir", "nav_tafsir", false], ["holy", "nav_holy", false],
+  ["life", "nav_life", false],
+  ["science", "nav_science", false],
+  ["proofs", "nav_proofs", false],
+  ["journey", "nav_journey", false],
+  ["events", "nav_events", false],
+  ["ahlquran", "nav_ahlquran", false],
+  ["dua", "nav_dua", false],
+  ["ziyarat", "nav_ziyarat", false],
+  ["ahlulbayt", "nav_ahl", false],
+  ["mahdi", "nav_mahdi", false],
   ["prayer", "nav_prayer", false], ["qibla", "nav_qibla", false], ["calendar", "nav_calendar", false],
-  ["ahlulbayt", "nav_ahl", false], ["library", "nav_library", false],
   ["community", "nav_community", false], ["tasbih", "nav_tasbih", false],
+  ["progress", "nav_progress", true],  // bottom nav item
+  ["explore", "nav_explore", true],   // opens the module grid (former Settings sheet)
 ];
 const isPrimaryRoute = (route) => NAV.some((n) => n[0] === route && n[2]);
 
 function buildNav() {
   el("#nav").innerHTML = NAV.map(([r, k]) => `
-    <div class="nav-item ${r === "home" ? "active" : ""}" data-route="${r}" onclick="go('${r}')">
+    <div class="nav-item ${r === "home" ? "active" : ""}" data-route="${r}" onclick="navClick('${r}')">
       <span class="ic">${icon(r)}</span><span data-i18n="${k}">${t(k)}</span>
     </div>`).join("");
 
   const bn = el("#bottomNav");
-  if (bn) bn.innerHTML = NAV.filter((n) => n[2]).map(([r, k]) => `
-    <button class="bottom-item ${r === "home" ? "active" : ""}" data-route="${r}" onclick="go('${r}')">
+  if (bn) {
+    bn.innerHTML = `<span class="bnav-pill" aria-hidden="true"></span>` + NAV.filter((n) => n[2]).map(([r, k]) => `
+    <button class="bottom-item ${r === "home" ? "active" : ""}" data-route="${r}">
       <span class="bi">${icon(r)}</span><span class="bl" data-i18n="${k}">${t(k)}</span>
     </button>`).join("");
+    requestAnimationFrame(moveBnavPill);
+    setupBnavDrag(bn);
+  }
 
   const sg = el("#settingsGrid");
   if (sg) sg.innerHTML = NAV.filter((n) => !n[2]).map(([r, k]) => `
@@ -2263,13 +4072,243 @@ function buildNav() {
     + `<section class="view" id="view-search"></section>`;
 }
 
+function navClick(route) { go(route); }
+// ---------- LATMIYAT (streamed audio from the Internet Archive) ----------
+const LAT_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+const LAT_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+let _latAudio = null, _latIdx = -1, _latView = [], _latLang = null;
+const LAT_LANGS = ["Urdu", "Arabic", "Farsi"];       // fixed language bars
+function renderLatmiya(v) {
+  const all = window.LATMIYAT || [];
+  if (!_latLang) {                                   // three fixed language bars
+    const g = {};
+    all.forEach((x) => { const l = x.l || "Other"; g[l] = (g[l] || 0) + 1; });
+    v.innerHTML = head("nav_latmiya") + LAT_LANGS.map((l) => `
+      <div class="list-item" onclick="latmiyaOpenLang('${l}')">
+        <div class="badge-num lat-ic">${icon("latmiya")}</div>
+        <div class="meta"><div class="t">${localizedText(l)}</div><div class="s">${locNum(g[l] || 0, State.lang)} ${localizedText("latmiyat")}</div></div>
+        <div style="color:var(--text-2);font-size:20px">›</div>
+      </div>`).join("");
+    return;
+  }
+  const list = all.filter((x) => (x.l || "Other") === _latLang);   // one language
+  v.innerHTML = head("nav_latmiya") + `
+    <button class="btn ghost" style="margin-bottom:12px" onclick="latmiyaBackLang()">← ${localizedText("Languages")}</button>
+    <div style="font-weight:800;font-size:17px;margin-bottom:10px">${localizedText(_latLang)} <span style="color:var(--text-2);font-size:13px;font-weight:600">· ${locNum(list.length, State.lang)}</span></div>
+    ${list.length ? `<label class="search" style="margin-bottom:12px"><span class="search-ic">${SEARCH_ICON}</span>
+      <input id="latSearch" placeholder="${t("search")}" oninput="latmiyaSearch(this.value)"></label>` : ""}
+    <div id="latList"></div>`;
+  if (!list.length) el("#latList").innerHTML = `<div class="card" style="text-align:center;color:var(--text-2)">${localizedText("No latmiyat yet")}</div>`;
+  else latmiyaRender(list);
+}
+function latmiyaOpenLang(l) { _latLang = l; renderLatmiya(el("#view-latmiya")); }
+function latmiyaBackLang() { _latLang = null; renderLatmiya(el("#view-latmiya")); }
+function latmiyaRender(list) {
+  _latView = list;
+  const body = el("#latList"); if (!body) return;
+  if (!list.length) { body.innerHTML = `<div class="card">${localizedText("No matches")}</div>`; return; }
+  const cap = 500;
+  body.innerHTML = list.slice(0, cap).map((x, i) => `
+    <div class="list-item lat-row ${i === _latIdx ? "playing" : ""}" onclick="latmiyaPlay(${i})">
+      <div class="badge-num lat-ic">${i === _latIdx && _latAudio && !_latAudio.paused ? LAT_PAUSE : LAT_PLAY}</div>
+      <div class="meta"><div class="t">${escapeHtml(x.t)}</div><div class="s">${[x.r ? escapeHtml(x.r) : "", x.d || (x.y ? "video" : "")].filter(Boolean).join(" · ")}</div></div>
+    </div>`).join("")
+    + (list.length > cap ? `<div style="text-align:center;color:var(--text-2);font-size:12px;margin:12px 0">${localizedText("Refine search to see more")}</div>` : "");
+}
+function latmiyaSearch(q) {
+  q = (q || "").trim().toLowerCase();
+  const all = (window.LATMIYAT || []).filter((x) => (x.l || "Other") === _latLang);
+  latmiyaRender(!q ? all : all.filter((x) => (x.t + " " + (x.r || "")).toLowerCase().includes(q)));
+}
+// Clean YouTube player (no settings/branding): IFrame API with controls=0 + our own bar.
+let _ytApiLoading = false, _ytPlayer = null, _ytTick = null;
+function ensureYtApi(cb) {
+  if (window.YT && window.YT.Player) { cb(); return; }
+  if (!_ytApiLoading) { _ytApiLoading = true; const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(s); }
+  const iv = setInterval(() => { if (window.YT && window.YT.Player) { clearInterval(iv); cb(); } }, 120);
+}
+function openLatYt(x) {
+  let m = el("#latYt");
+  if (!m) { m = document.createElement("div"); m.id = "latYt"; m.className = "lat-yt"; document.body.appendChild(m); }
+  m.innerHTML = `<div class="lat-yt-inner">
+      <button class="lat-yt-x" onclick="closeLatYt()" aria-label="Close">×</button>
+      <div class="lat-yt-frame"><div id="latYtPlayer"></div><div class="lat-yt-shield"></div></div>
+      <div class="lat-yt-bar">
+        <button class="lat-yt-pp" id="latYtPP" onclick="latYtToggle()">${LAT_PAUSE}</button>
+        <input class="lat-yt-seek" id="latYtSeek" type="range" min="0" max="1000" value="0" oninput="latYtSeek(this.value)">
+        <span class="lat-yt-time" id="latYtTime">0:00</span>
+      </div>
+      <div class="lat-yt-t">${escapeHtml(x.t)}${x.r ? ` · <span>${escapeHtml(x.r)}</span>` : ""}</div>
+    </div>`;
+  requestAnimationFrame(() => m.classList.add("open"));
+  ensureYtApi(() => {
+    if (_ytPlayer) { try { _ytPlayer.destroy(); } catch (e) {} _ytPlayer = null; }
+    _ytPlayer = new YT.Player("latYtPlayer", {
+      videoId: x.y,
+      playerVars: { controls: 0, modestbranding: 1, rel: 0, iv_load_policy: 3, fs: 0, disablekb: 1, playsinline: 1, autoplay: 1 },
+      events: {
+        onReady: (e) => { e.target.playVideo(); startYtTick(); },
+        onStateChange: () => { const b = el("#latYtPP"); if (b && _ytPlayer) b.innerHTML = (_ytPlayer.getPlayerState && _ytPlayer.getPlayerState() === 1) ? LAT_PAUSE : LAT_PLAY; },
+      },
+    });
+  });
+}
+function startYtTick() {
+  clearInterval(_ytTick);
+  _ytTick = setInterval(() => {
+    if (!_ytPlayer || !_ytPlayer.getDuration) return;
+    const d = _ytPlayer.getDuration() || 0, c = _ytPlayer.getCurrentTime() || 0;
+    const s = el("#latYtSeek"), tm = el("#latYtTime");
+    if (s && d) s.value = Math.round((c / d) * 1000);
+    if (tm) tm.textContent = `${Math.floor(c / 60)}:${String(Math.floor(c % 60)).padStart(2, "0")}`;
+  }, 500);
+}
+function latYtToggle() { if (!_ytPlayer) return; if (_ytPlayer.getPlayerState() === 1) _ytPlayer.pauseVideo(); else _ytPlayer.playVideo(); }
+function latYtSeek(v) { if (_ytPlayer && _ytPlayer.getDuration) _ytPlayer.seekTo((v / 1000) * _ytPlayer.getDuration(), true); }
+function closeLatYt() {
+  clearInterval(_ytTick);
+  if (_ytPlayer) { try { _ytPlayer.destroy(); } catch (e) {} _ytPlayer = null; }
+  const m = el("#latYt"); if (m) { m.classList.remove("open"); m.innerHTML = ""; }
+}
+function latmiyaPlay(i) {
+  const x = _latView[i]; if (!x) return;
+  if (x.y) { openLatYt(x); return; }           // YouTube-hosted → embedded player
+  if (_latIdx === i && _latAudio) {            // tapping the playing row toggles
+    if (_latAudio.paused) _latAudio.play(); else _latAudio.pause();
+    latmiyaRender(_latView); latmiyaBar(); return;
+  }
+  if (!_latAudio) {
+    _latAudio = new Audio();
+    _latAudio.onended = () => { const n = _latIdx + 1; if (_latView[n]) latmiyaPlay(n); };
+    _latAudio.ontimeupdate = latmiyaBar;
+    _latAudio.onplay = () => { latmiyaRender(_latView); latmiyaBar(); };
+    _latAudio.onpause = () => { latmiyaRender(_latView); latmiyaBar(); };
+    _latAudio.onerror = () => toast(localizedText("Audio unavailable"));
+  }
+  _latIdx = i; _latAudio.src = x.u;
+  _latAudio.play().catch(() => toast(localizedText("Audio unavailable")));
+  latmiyaRender(_latView); latmiyaBar();
+}
+function latmiyaBar() {
+  let bar = el("#latBar");
+  const x = _latView[_latIdx] || (window.LATMIYAT || [])[_latIdx];
+  if (!_latAudio || !x) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "latBar"; bar.className = "lat-bar";
+    bar.innerHTML = `<button class="lat-btn" onclick="latmiyaToggle()" id="latToggle"></button>
+      <div class="lat-meta"><div class="t" id="latNowT"></div><div class="s" id="latNowR"></div></div>
+      <input id="latSeek" class="lat-seek" type="range" min="0" max="1000" value="0" oninput="latmiyaSeek(this.value)">
+      <button class="lat-x" onclick="latmiyaClose()" aria-label="Close">×</button>`;
+    document.body.appendChild(bar);
+  }
+  el("#latToggle").innerHTML = _latAudio.paused ? LAT_PLAY : LAT_PAUSE;
+  el("#latNowT").textContent = x.t; el("#latNowR").textContent = x.r || "";
+  const s = el("#latSeek");
+  if (s && _latAudio.duration) s.value = Math.round((_latAudio.currentTime / _latAudio.duration) * 1000);
+}
+function latmiyaToggle() { if (!_latAudio) return; if (_latAudio.paused) _latAudio.play(); else _latAudio.pause(); }
+function latmiyaSeek(v) { if (_latAudio && _latAudio.duration) _latAudio.currentTime = (v / 1000) * _latAudio.duration; }
+function latmiyaClose() {
+  if (_latAudio) { _latAudio.onerror = null; _latAudio.pause(); _latAudio.removeAttribute("src"); try { _latAudio.load(); } catch (e) {} }
+  _latIdx = -1; el("#latBar")?.remove(); latmiyaRender(_latView);
+}
+// ---------- PROGRESS (ring widgets with a rotating disk in the middle) ----------
+// One circular progress ring; a disk spins in the centre, value + label on top.
+function progRing(pct, color, valText, label) {
+  const r = 52, c = 2 * Math.PI * r, off = c * (1 - Math.min(1, pct / 100));
+  const isGrad = Array.isArray(color);                 // [start, end] → gradient stroke
+  const gid = "prg" + Math.random().toString(36).slice(2, 8);
+  const stroke = isGrad ? `url(#${gid})` : color;
+  const diskC = isGrad ? color[0] : color;
+  const defs = isGrad
+    ? `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${color[0]}"/><stop offset="1" stop-color="${color[1]}"/></linearGradient></defs>` : "";
+  return `<div class="pring">
+    <svg viewBox="0 0 120 120" class="pring-svg" aria-hidden="true">
+      ${defs}
+      <circle cx="60" cy="60" r="${r}" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="10"/>
+      <circle cx="60" cy="60" r="${r}" fill="none" stroke="${stroke}" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 60 60)"
+        style="transition:stroke-dashoffset 1s var(--ease)"/>
+    </svg>
+    <div class="pring-disk" style="--c:${diskC}"></div>
+    <div class="pring-center"><div class="pring-val">${valText}</div><div class="pring-lbl">${label}</div></div>
+  </div>`;
+}
+async function renderProgress(v) {
+  const st = Stats.get();
+  const dayStreak = st.streak || 1;
+  const dToday = st.dhikrToday || 0;
+  const hadithAll = (st.readHadithAll || []).length;
+  const duaRead = Stats.readCount("dua"), duaTot = (typeof DUAS !== "undefined" ? DUAS.length : 0) || 1;
+  const ziyRead = Stats.readCount("ziyarat"), ziyTot = (typeof ZIYARAT !== "undefined" ? ZIYARAT.length : 0) || 1;
+  const ayahAll = (st.readAyatAll || []).length;
+  const quranPct = Math.min(100, Math.round((ayahAll / QURAN_TOTAL) * 100));
+
+  // Big round Qur'an-progress graph
+  const quranCard = `<div class="card prog-quran">
+    <div class="prog-quran-ring">${progRing(quranPct, ["#ffd86b", "#ff7a18"], locNum(quranPct, State.lang) + "%", t("nav_quran"))}</div>
+    <div class="prog-quran-sub">${locNum(ayahAll, State.lang)} / ${locNum(QURAN_TOTAL, State.lang)} ${localizedText("ayat")}</div>
+    <div class="prog-quran-note">${localizedText("Whole-Qur'an reading progress")}</div>
+  </div>`;
+
+  const rings = `<div class="card pring-grid">
+    ${progRing(duaRead / duaTot * 100, ["#ff5fa2", "#c2185b"], locNum(duaRead, State.lang), t("nav_dua"))}
+    ${progRing(ziyRead / ziyTot * 100, ["#ff5fa2", "#c2185b"], locNum(ziyRead, State.lang), t("nav_ziyarat"))}
+  </div>`;
+
+  v.innerHTML = head("nav_progress") + quranCard + `<div id="progHadith"></div>` + rings;
+  // Hadith activity chart (weekly + top collections)
+  try {
+    const d = await api("/hadith/books");
+    const g = hadithGraph(d.books);
+    if (g) el("#progHadith").innerHTML = g;
+  } catch { /* offline: skip the hadith chart */ }
+}
+// ---------- THE 313 — Imam al-Mahdi (AJ) : a 10-page introduction ----------
+let _mahdiPage = 0;
+function renderMahdi(v) {
+  _mahdiPage = 0;
+  v.innerHTML = head("nav_mahdi") + `<div id="mahdiBody"></div>`;
+  showMahdiPage(0);
+}
+function showMahdiPage(i) {
+  const base = window.MAHDI_PAGES || [];
+  const tr = (State.lang !== "en" && window.MAHDI_TR && window.MAHDI_TR[State.lang]) || null;
+  const pages = (tr && tr.length === base.length) ? tr : base;
+  if (!pages.length) { const b = el("#mahdiBody"); if (b) b.innerHTML = `<div class="card">${t("loading")}</div>`; return; }
+  _mahdiPage = Math.max(0, Math.min(pages.length - 1, i));
+  const p = pages[_mahdiPage];
+  const dir = ARABIC_SCRIPT_LANGS.includes(State.lang) ? "rtl" : "ltr";
+  const body = el("#mahdiBody"); if (!body) return;
+  const pnum = `${locNum(_mahdiPage + 1, State.lang)} / ${locNum(pages.length, State.lang)}`;
+  body.innerHTML = `
+    <div class="mahdi-pnum">${pnum}</div>
+    <h2 class="mahdi-h" dir="${dir}">${p.t}</h2>
+    <div class="mahdi-doc" dir="${dir}">${p.h}</div>
+    <div class="mahdi-nav">
+      <button class="btn ghost" ${_mahdiPage <= 0 ? "disabled" : ""} onclick="showMahdiPage(${_mahdiPage - 1})">← ${localizedText("Previous")}</button>
+      <span class="mahdi-dots">${pages.map((_, k) => `<i class="${k === _mahdiPage ? "on" : ""}" onclick="showMahdiPage(${k})"></i>`).join("")}</span>
+      <button class="btn" ${_mahdiPage >= pages.length - 1 ? "disabled" : ""} onclick="showMahdiPage(${_mahdiPage + 1})">${localizedText("Next")} →</button>
+    </div>`;
+  window.scrollTo({ top: 0 });   // normal page flow: reset to top on page change
+}
+// Explore is a normal full page (like Quran/Hadith): a grid of the remaining modules.
+function renderExplore(v) {
+  const boxes = NAV.filter((n) => !n[2]).map(([r, k]) => `
+    <button class="settings-item" data-route="${r}" onclick="go('${r}')">
+      <span class="si">${icon(r)}</span><span data-i18n="${k}">${t(k)}</span>
+    </button>`).join("");
+  v.innerHTML = head("nav_explore") + `<div class="settings-grid">${boxes}</div>`;
+}
 function openSettings() {
   el("#settingsPanel")?.classList.add("open");
   el("#settingsBackdrop")?.classList.add("open");
+  document.body.classList.add("sheet-lock");
 }
 function closeSettings() {
   el("#settingsPanel")?.classList.remove("open");
   el("#settingsBackdrop")?.classList.remove("open");
+  document.body.classList.remove("sheet-lock");
 }
 // Open a module from Settings; push a marker so Back / left-swipe returns to Settings.
 function openModuleFromSettings(route) {
@@ -2286,8 +4325,138 @@ function initialRoute() {
   return normalizeRoute(decodeURIComponent((location.hash || "").replace(/^#/, "")) || "home");
 }
 
+// ---------- AZAN PRAYER REMINDERS (native app + PWA notifications) ----------
+const AZAN_KEY = "wilayat.azan";           // "on" | "off"
+const isLoggedIn = () => { try { return !!JSON.parse(localStorage.getItem("wilayat.auth") || "null"); } catch { return false; } };
+// Running inside the native app (Capacitor)? Then we can fire azan even when fully closed.
+const isNativeApp = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const capLN = () => { try { return window.Capacitor.Plugins.LocalNotifications; } catch { return null; } };
+function azanOn() {
+  if (localStorage.getItem(AZAN_KEY) === "off" || !isLoggedIn()) return false;
+  if (isNativeApp()) return localStorage.getItem(AZAN_KEY) === "on";
+  return "Notification" in window && Notification.permission === "granted";
+}
+
+function registerAzanSW() {
+  if (isNativeApp() || !("serviceWorker" in navigator)) return;   // native uses OS notifications, not SW
+  navigator.serviceWorker.register("sw.js").catch(() => { /* not on https/localhost → skip */ });
+}
+
+// Native: schedule real OS local notifications for the next 7 days (fire when closed/locked).
+async function scheduleAzanNative() {
+  const ln = capLN(); if (!ln) return;
+  try {
+    const perm = await ln.requestPermissions();
+    if (perm.display !== "granted") return;
+    // clear our previously-scheduled azan ids, then rebuild
+    const ids = [];
+    for (let i = 1000; i < 1000 + 7 * 10 + 5; i++) ids.push({ id: i });
+    await ln.cancel({ notifications: ids }).catch(() => {});
+    const times = prayerTimes();
+    const keys = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
+    const now = new Date();
+    const list = [];
+    for (let d = 0; d < 7; d++) {
+      keys.forEach((key, ki) => {
+        const hhmm = times[key]; if (!hhmm) return;
+        const [h, m] = hhmm.split(":").map(Number); if (isNaN(h)) return;
+        const when = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d, h, m, 0);
+        if (when <= now) return;
+        const p = PRAYERS.find((x) => x.key === key) || {};
+        list.push({
+          id: 1000 + d * 10 + ki,
+          title: "🕌 " + localizedText("Azan") + " · " + langName(p),
+          body: localizedText("It's time for") + " " + langName(p) + " — " + localizedText("tap to mark it prayed."),
+          schedule: { at: when, allowWhileIdle: true },
+          sound: "azan.wav",            // add azan.wav to the native project for the real call
+          smallIcon: "ic_stat_icon",
+          extra: { url: "#prayer" },
+        });
+      });
+    }
+    if (list.length) await ln.schedule({ notifications: list });
+    if (!window._azanTapHooked && ln.addListener) {
+      window._azanTapHooked = true;
+      ln.addListener("localNotificationActionPerformed", () => { location.hash = "prayer"; });
+    }
+  } catch (e) { /* scheduling optional */ }
+}
+
+let _azanTimers = [];
+function clearAzanTimers() { _azanTimers.forEach((id) => clearTimeout(id)); _azanTimers = []; }
+// Web: schedule a phone notification at each of today's prayer times (fires while the
+// app is open or installed/backgrounded). Native path uses OS notifications instead.
+function scheduleAzanReminders() {
+  clearAzanTimers();
+  if (!azanOn()) return;
+  if (isNativeApp()) { scheduleAzanNative(); return; }   // real background azan in the app
+  const times = prayerTimes();
+  const now = new Date();
+  ["fajr", "dhuhr", "asr", "maghrib", "isha"].forEach((key) => {
+    const hhmm = times[key]; if (!hhmm) return;
+    const [h, m] = hhmm.split(":").map(Number);
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+    const delay = target - now;
+    if (delay <= 0 || delay > 24 * 3600 * 1000) return;   // only upcoming prayers today
+    _azanTimers.push(setTimeout(() => fireAzan(key), delay));
+  });
+  // reschedule just after midnight for the next day
+  const mid = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 30);
+  _azanTimers.push(setTimeout(scheduleAzanReminders, mid - now));
+}
+function fireAzan(key) {
+  const p = PRAYERS.find((x) => x.key === key) || {};
+  const title = "🕌 " + localizedText("Azan") + " · " + langName(p);
+  const opts = {
+    body: localizedText("It's time for") + " " + langName(p) + " — " + localizedText("tap to mark it prayed."),
+    tag: "azan-" + key, renotify: true, requireInteraction: true, vibrate: [200, 100, 200],
+    icon: "assets/al-wilayat-logo.jpeg?v=5", badge: "assets/al-wilayat-logo.jpeg?v=5",
+    data: { url: "./#prayer" },
+  };
+  if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+    navigator.serviceWorker.ready.then((reg) => reg.showNotification(title, opts)).catch(() => { try { new Notification(title, opts); } catch (e) {} });
+  } else { try { new Notification(title, opts); } catch (e) {} }
+  try { const a = new Audio("assets/azan.mp3"); a.play().catch(() => {}); } catch (e) { /* no azan file → silent notification */ }
+}
+// Called from a button tap (a user gesture) to turn reminders on.
+async function enableAzan() {
+  if (!isLoggedIn()) { toast(localizedText("Please sign in first.")); return; }
+  if (isNativeApp()) {                       // native app path (real background azan)
+    const ln = capLN();
+    const perm = ln ? await ln.requestPermissions() : { display: "denied" };
+    if (perm.display === "granted") {
+      localStorage.setItem(AZAN_KEY, "on");
+      await scheduleAzanNative();
+      toast("🔔 " + localizedText("Azan reminders on"));
+    } else {
+      toast(localizedText("Notifications are blocked — enable them in your browser settings."));
+    }
+    if (State.route === "prayer") RENDERERS.prayer(el("#view-prayer"));
+    return;
+  }
+  if (!("Notification" in window)) { toast(localizedText("Notifications are not supported here.")); return; }
+  Notification.requestPermission().then((perm) => {
+    if (perm === "granted") {
+      localStorage.setItem(AZAN_KEY, "on");
+      registerAzanSW();
+      scheduleAzanReminders();
+      toast("🔔 " + localizedText("Azan reminders on"));
+    } else {
+      toast(localizedText("Notifications are blocked — enable them in your browser settings."));
+    }
+    if (State.route === "prayer") RENDERERS.prayer(el("#view-prayer"));
+  });
+}
+function disableAzan() {
+  localStorage.setItem(AZAN_KEY, "off");
+  clearAzanTimers();
+  toast(localizedText("Azan reminders off"));
+  if (State.route === "prayer") RENDERERS.prayer(el("#view-prayer"));
+}
+
 function init() {
   Stats.touchStreak();          // advance the daily streak once per app open
+  registerAzanSW();             // PWA service worker (azan reminders)
   buildNav();
   applyTheme();
   try { applyLang(); } catch (e) { /* never block boot on a localization error */ }
@@ -2297,24 +4466,39 @@ function init() {
   go(startRoute, { history: false });
   requestLocation(); // ask once on open → prayer times, Qibla & mosque finder auto-correct
 
-  // Top-bar search → exact hadith / verse lookup
+  // Top-bar search → live section suggestions + exact hadith / verse lookup
+  if (!el("#searchSuggest")) {
+    const sg = document.createElement("div");
+    sg.id = "searchSuggest"; sg.className = "search-suggest";
+    document.body.appendChild(sg);
+  }
   const searchInput = el(".search input");
   if (searchInput) {
-    searchInput.addEventListener("input", () => {
-      updateSearchMark();
-      if (State.route === "home") filterHomeModules(searchInput.value);
-    });
+    searchInput.addEventListener("input", () => { updateSearchMark(); searchSuggest(searchInput.value); });
+    searchInput.addEventListener("focus", () => searchSuggest(searchInput.value));
+    searchInput.addEventListener("blur", () => setTimeout(() => el("#searchSuggest")?.classList.remove("open"), 180));
     searchInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") globalSearch(searchInput.value);
+      if (e.key === "Enter") { el("#searchSuggest")?.classList.remove("open"); globalSearch(searchInput.value); }
+      if (e.key === "Escape") el("#searchSuggest")?.classList.remove("open");
     });
   }
+  window.addEventListener("resize", () => { if (el("#searchSuggest")?.classList.contains("open")) positionSuggest(); });
   const searchBackBtn = el("#searchBackBtn");
   if (searchBackBtn) searchBackBtn.onclick = (e) => {
     e.preventDefault();
     closeSearchFromBar();
   };
 
-  el("#langBtn").onclick = () => el("#langMenu").classList.toggle("open");
+  // Move the language modal to <body> so its fixed positioning centers on the
+  // whole screen (inside .topbar.glass its backdrop-filter trapped it up top).
+  document.body.appendChild(el("#langMenu"));
+  el("#langBtn").onclick = () => {
+    const m = el("#langMenu");
+    m.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.lang === State.lang));
+    m.classList.toggle("open");
+  };
+  // tapping the dimmed backdrop (outside the box) closes the language modal
+  el("#langMenu").onclick = (e) => { if (e.target === el("#langMenu")) el("#langMenu").classList.remove("open"); };
   el("#menuBtn").onclick = () => el("#sidebar").classList.toggle("open");
   const settingsBtn = el("#settingsBtn");
   if (settingsBtn) settingsBtn.onclick = openSettings;
@@ -2322,6 +4506,12 @@ function init() {
   if (settingsBackdrop) settingsBackdrop.onclick = closeSettings;
   const settingsClose = el("#settingsClose");
   if (settingsClose) settingsClose.onclick = closeSettings;
+  const duaBackdrop = el("#duaBackdrop");
+  if (duaBackdrop) duaBackdrop.onclick = () => history.back();
+  const qaBackdrop = el("#qaBackdrop");
+  if (qaBackdrop) qaBackdrop.onclick = () => history.back();
+  const qrBackdrop = el("#qrBackdrop");
+  if (qrBackdrop) qrBackdrop.onclick = () => history.back();
   el("#langMenu").querySelectorAll("button").forEach((b) =>
     (b.onclick = () => {
       State.lang = b.dataset.lang;
@@ -2330,9 +4520,29 @@ function init() {
       RENDERERS[State.route] && RENDERERS[State.route](el("#view-" + State.route));
     })
   );
+  // Account drop-down (round avatar in the top bar → name + Sign out, drops down).
+  const acctMenu = el("#acctMenu");
+  if (acctMenu) document.body.appendChild(acctMenu);   // out of the top bar so it isn't clipped
+  function positionAcctMenu() {
+    const m = el("#acctMenu"), btn = el("#acctBtn"); if (!m || !btn) return;
+    const r = btn.getBoundingClientRect(), card = m.querySelector(".acct-card");
+    const w = (card && card.offsetWidth) || 200;
+    m.style.top = (r.bottom + 8) + "px";
+    m.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + "px";
+  }
+  const acctBtn = el("#acctBtn");
+  if (acctBtn) acctBtn.onclick = (e) => {
+    e.stopPropagation();
+    const m = el("#acctMenu");
+    m.classList.toggle("open");
+    if (m.classList.contains("open")) positionAcctMenu();
+  };
+  window.addEventListener("resize", () => { if (el("#acctMenu")?.classList.contains("open")) positionAcctMenu(); });
+
   document.addEventListener("click", (e) => {
     if (!e.target.closest("#langBtn") && !e.target.closest("#langMenu")) el("#langMenu").classList.remove("open");
     if (!e.target.closest("#sidebar") && !e.target.closest("#menuBtn")) el("#sidebar").classList.remove("open");
+    if (!e.target.closest("#acctBtn") && !e.target.closest("#acctMenu")) el("#acctMenu")?.classList.remove("open");
   });
 
   window.addEventListener("popstate", (e) => {
@@ -2340,6 +4550,24 @@ function init() {
     _navIndex = Number.isFinite(e.state && e.state.index) ? e.state.index : 0;
     go(route, { history: false });
     if (e.state && e.state.settingsOpen) openSettings(); else closeSettings();
+    if (e.state && e.state.duaOpen) openDuaDay(); else closeDuaDay();
+    if (e.state && e.state.qaOpen) openQA(); else closeQA();
+    if (!(e.state && e.state.qrOpen)) closeQuranReader();
+    // Tafsir: Back from a volume returns to that tafsir's volume list (not out of the reader)
+    if (e.state && e.state.qrOpen && !e.state.tafRead && _tafReading) {
+      _tafReading = false;
+      showTafsirVolumes(_tafOpenIdx);
+    }
+    // Hadith library: Back from a volume returns to that book's volume list
+    if (e.state && e.state.qrOpen && !e.state.tafRead && _hlibReading) {
+      _hlibReading = false;
+      showHlibVolumes(_hlibOpenIdx);
+    }
+    // Holy Books: Back from a chapter returns to that scripture's book list
+    if (e.state && e.state.qrOpen && !e.state.tafRead && _holyReading) {
+      _holyReading = false;
+      showHolyBooks(_holyOpenIdx);
+    }
   });
 }
 

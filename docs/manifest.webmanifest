@@ -1,0 +1,13 @@
+{
+  "name": "Al-Wilayat",
+  "short_name": "Wilayat",
+  "description": "Shia Islamic super app: Quran, Hadith, Dua, Ziyarat, prayer times & azan reminders.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#02040a",
+  "theme_color": "#02040a",
+  "icons": [
+    { "src": "assets/al-wilayat-logo.jpeg?v=5", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" }
+  ]
+}
